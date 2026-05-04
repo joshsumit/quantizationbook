@@ -1,0 +1,30 @@
+name: Deploy mdBook to GitHub Pages
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mdBook
+        run: |
+          tag=$(curl -s https://api.github.com/repos/rust-lang/mdBook/releases/latest | grep '"tag_name"' | sed 's/.*"tag_name": "//;s/".*//')
+          curl -sSL "https://github.com/rust-lang/mdBook/releases/download/${tag}/mdbook-${tag}-x86_64-unknown-linux-gnu.tar.gz" -o mdbook.tar.gz
+          tar -xzf mdbook.tar.gz
+          chmod +x mdbook
+      - name: Build
+        run: ./mdbook build
+      - uses: actions/configure-pages@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: book
+      - id: deployment
+        uses: actions/deploy-pages@v4
