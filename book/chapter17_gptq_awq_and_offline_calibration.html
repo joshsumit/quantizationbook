@@ -1,0 +1,353 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>GPTQ, AWQ, and Offline Calibration - Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A Practitioner&#x27;s Guide to Model Compression for Real Hardware">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="chapter-17-gptq-awq-and-offline-calibration"><a class="header" href="#chapter-17-gptq-awq-and-offline-calibration">Chapter 17: GPTQ, AWQ, and Offline Calibration</a></h1>
+<h2 id="better-than-rounding"><a class="header" href="#better-than-rounding">Better Than Rounding</a></h2>
+<p>Weight-only quantization with group-wise scales determines the ranges. But a question remains: once the scales are determined, how is each weight value mapped to its integer?</p>
+<p>The naive answer is rounding — each weight independently rounds to the nearest grid point. This is what PTQ does (Chapter 10). For int8, naive rounding works reasonably well because 256 levels provide sufficient resolution for most weight distributions. For int4 — 16 levels — the rounding error per weight is much larger, and the cumulative effect across millions of weights can be severe.</p>
+<p>GPTQ and AWQ are algorithms that do better than naive rounding. They choose integer values for each weight in a way that minimizes the effect of quantization error on the layer's output — taking into account how weights interact with each other and with the data.</p>
+<hr />
+<h2 id="why-naive-rounding-is-suboptimal"><a class="header" href="#why-naive-rounding-is-suboptimal">Why Naive Rounding Is Suboptimal</a></h2>
+<p>When a single weight is rounded to the nearest grid point, the rounding error for that weight is minimized. But weights do not operate in isolation. They participate in a matrix multiplication:</p>
+<p>$$y = Wx$$</p>
+<p>Each output value is a dot product of a weight row with the input $x$. The quantization error in the output depends not on the error of any individual weight, but on the sum of errors weighted by the input values. A small rounding error on a weight that multiplies a large activation contributes more to the output error than a large rounding error on a weight that multiplies a near-zero activation.</p>
+<p>Naive rounding ignores this. It minimizes per-weight error, not per-output error. GPTQ and AWQ both minimize per-output error, but through different mechanisms.</p>
+<hr />
+<h2 id="gptq-error-redistribution"><a class="header" href="#gptq-error-redistribution">GPTQ: Error Redistribution</a></h2>
+<p>GPTQ quantizes weights sequentially, using second-order information from calibration activations to redistribute quantization error. When a weight is rounded to its nearest grid point, the rounding error is computed. That error is then <em>redistributed</em> to the not-yet-quantized weights in the same row — adjusting them so that the total row output stays as close as possible to the float original.</p>
+<h3 id="the-optimization-problem"><a class="header" href="#the-optimization-problem">The Optimization Problem</a></h3>
+<p>GPTQ solves a specific objective. For a single layer with weight matrix $W$ and calibration inputs $X$, find quantized weights $\hat{W}$ that minimize the <em>layer reconstruction error</em>:</p>
+<p>$$\min_{\hat{W}} | WX - \hat{W}X |_2^2$$</p>
+<p>This is not per-weight error ($|W - \hat{W}|$) — it is per-<em>output</em> error, weighted by the actual inputs the layer sees. A weight that multiplies large activations matters more than one that multiplies near-zero activations.</p>
+<p>The Hessian of this objective with respect to the weights is $H = 2XX^T$ — a matrix that captures the second-order sensitivity of the output to each weight. In plain terms: the Hessian tells us how much a small change in each weight affects the output error. A weight that multiplies large activations consistently has a large Hessian value — it is sensitive. A weight that multiplies near-zero activations has a small Hessian value — it is insensitive and can absorb more rounding error. GPTQ uses this sensitivity information to decide where to redistribute the rounding error.</p>
+<p>The key approximation: GPTQ processes weights sequentially (often in blocks) rather than jointly optimizing all weights simultaneously. Joint optimization over millions of weights is intractable. The sequential approach, derived from the Optimal Brain Surgeon framework, is an approximation that trades global optimality for tractability — and empirically, the loss is small.</p>
+<p>The redistribution uses second-order information from the Hessian, approximated from a small calibration dataset (typically 128–256 samples, though the exact count is model- and calibration-coverage-dependent). The Hessian captures how sensitive the layer's output is to changes in each weight — allowing the algorithm to distribute error preferentially to weights that affect the output least.</p>
+<h3 id="concrete-example"><a class="header" href="#concrete-example">Concrete example</a></h3>
+<p>A row of four weights being quantized to int4 with step size $S = 0.1$:</p>
+<div class="table-wrapper"><table><thead><tr><th>Weight</th><th>Float value</th><th>Naive int4</th><th>Naive error</th></tr></thead><tbody>
+<tr><td>$w_1$</td><td>0.37</td><td>0.4</td><td>+0.03</td></tr>
+<tr><td>$w_2$</td><td>1.82</td><td>1.8</td><td>-0.02</td></tr>
+<tr><td>$w_3$</td><td>0.54</td><td>0.5</td><td>-0.04</td></tr>
+<tr><td>$w_4$</td><td>-0.28</td><td>-0.3</td><td>-0.02</td></tr>
+</tbody></table>
+</div>
+<p><strong>Naive rounding:</strong> each weight rounds independently. Total output error = sum of (weight error × input), uncontrolled.</p>
+<p><strong>GPTQ:</strong> $w_1$ rounds to 0.4 (error = +0.03). The Hessian indicates $w_2$ is the least sensitive to adjustment. GPTQ adjusts $w_2$'s float value from 1.82 to $1.82 - 0.03 \times h_{12}/h_{22} = 1.84$ (where $h_{ij}$ are Hessian entries) before rounding it. $w_2$ now rounds to 1.8 from 1.84 instead of 1.82 — a slightly different rounding, but one that compensates for $w_1$'s error in the output.</p>
+<p><strong>Detailed walkthrough with calibration inputs.</strong> Suppose calibration produces average input $x = [2.5, 1.0, 0.3, 1.8]$. The target output for this row:</p>
+<p>$$y_{\text{float}} = 0.37 \times 2.5 + 1.82 \times 1.0 + 0.54 \times 0.3 + (-0.28) \times 1.8 = 0.925 + 1.82 + 0.162 - 0.504 = 2.403$$</p>
+<p>Naive rounding: $y_{\text{naive}} = 0.4 \times 2.5 + 1.8 \times 1.0 + 0.5 \times 0.3 + (-0.3) \times 1.8 = 1.0 + 1.8 + 0.15 - 0.54 = 2.41$. Error: $|2.403 - 2.41| = 0.007$.</p>
+<p>GPTQ processes $w_1$ first. Error = +0.03. The Hessian $H = 2XX^T$ tells us $w_2$ has the lowest sensitivity. GPTQ adjusts $w_2$: $1.82 - 0.03 \times (2.5 \times 1.0) / (1.0^2) = 1.82 - 0.075 = 1.745$. Rounds to 1.7. Then $w_3$: adjusted from 0.54 by the accumulated residual, rounds to 0.5. Then $w_4$: adjusted from -0.28, rounds to -0.3.</p>
+<p>GPTQ output: $0.4 \times 2.5 + 1.7 \times 1.0 + 0.5 \times 0.3 + (-0.3) \times 1.8 = 1.0 + 1.7 + 0.15 - 0.54 = 2.31$. Error: $|2.403 - 2.31| = 0.093$.</p>
+<p>In this toy example, GPTQ is worse — the redistribution pushed $w_2$ too far. But across thousands of output rows and realistic 4096-wide dot products, the Hessian-guided redistribution statistically produces lower total reconstruction error than naive rounding. The benefit emerges in aggregate, not in any single row.</p>
+<p>The process continues left to right. Each weight's rounding error is distributed to subsequent weights. By the end of the row, the total output error is significantly smaller than naive rounding — even though individual weight errors may be larger.</p>
+<p>GPTQ processes the entire model layer by layer, each time using the calibration dataset to compute the Hessian. The total runtime is minutes to hours, depending on model size — far cheaper than QAT.</p>
+<hr />
+<h2 id="awq-protecting-salient-weights"><a class="header" href="#awq-protecting-salient-weights">AWQ: Protecting Salient Weights</a></h2>
+<p>AWQ takes a different approach. Instead of redistributing error after rounding, it identifies which weight channels are most <em>salient</em> — most important for the layer's output — and protects them during quantization.</p>
+<h3 id="the-optimization-problem-1"><a class="header" href="#the-optimization-problem-1">The Optimization Problem</a></h3>
+<p>AWQ solves a different objective from GPTQ. Instead of optimizing the quantized values directly, it optimizes <em>per-channel scaling factors</em> $s$ applied before quantization:</p>
+<p>$$\min_{s} | WX - Q(s \cdot W) \cdot (X / s) |_2^2$$</p>
+<p>where $Q(\cdot)$ is the quantization function (round to nearest grid point) and the scaling/division is per-channel. The key insight: scaling a weight channel by $s &gt; 1$ before quantization gives it more grid resolution in its important range, at the cost of the corresponding activation channel being divided by $s$.</p>
+<p>AWQ approximates this by defining channel saliency as the average activation magnitude: $\text{saliency}_k = \mathbb{E}[|x_k|]$, measured over the calibration dataset. High-saliency channels get larger scaling factors. Unlike GPTQ's sequential Hessian-based approach, AWQ's scaling is largely saliency-driven with lightweight tuning — no iterative weight adjustment is needed, making it substantially cheaper to run.</p>
+<p>The key observation: not all weight channels contribute equally to the output. Channels that are consistently multiplied by large activations have a disproportionate effect. A small quantization error in a salient channel causes more output degradation than a large error in a non-salient channel.</p>
+<p>AWQ uses a calibration dataset to measure activation magnitudes and identify salient channels. It then applies a per-channel scaling: salient channels are scaled up before quantization (so they receive more grid points in their important range) and the corresponding activations are scaled down to compensate.</p>
+<p><strong>Worked example: AWQ saliency-driven scaling.</strong> A layer with 4 input channels. Calibration dataset (100 samples) produces mean activation magnitudes:</p>
+<p>| Channel | Mean $|x|$ | Saliency rank | AWQ scale $\beta$ |
+|---|---|---|---|
+| 0 | 0.5 | 3rd | 0.8 |
+| 1 | 3.2 | 1st (most salient) | 2.0 |
+| 2 | 0.1 | 4th | 0.3 |
+| 3 | 0.8 | 2nd | 1.2 |</p>
+<p>Channel 1 (saliency rank 1) gets $\beta = 2.0$: its weights are multiplied by 2.0 before quantization. With int4 step size 0.067, channel 1’s effective step size becomes $0.067 / 2.0 = 0.034$ — 2× finer precision for the most important channel. Channel 2 ($\beta = 0.3$): effective step size $= 0.067 / 0.3 = 0.223$ — 3× coarser, but channel 2 contributes little to the output (mean activation 0.1). The net output error decreases because precision is allocated proportionally to each channel’s contribution.</p>
+<p>This is conceptually related to SmoothQuant (Chapter 15), but the goal is different. SmoothQuant smooths activation outliers to make activations quantizable. AWQ protects salient weight channels to make weight quantization more accurate. Note that AWQ's scaling is per weight <em>input</em> channel and compensation is on the corresponding activation channel — distinct from per-output-channel quantization scales.</p>
+<h3 id="how-it-works"><a class="header" href="#how-it-works">How it works</a></h3>
+<p>Suppose channel $k$ has high saliency (large activation magnitudes). AWQ scales $W_k$ by a factor $\beta &gt; 1$ before quantization:</p>
+<p>$$\tilde{W}_k = \beta \cdot W_k$$</p>
+<p>After quantization, the dequantized weight $\hat{W}_k$ has smaller relative error because the scaling placed the weights in a region of the grid with better resolution relative to their original magnitude. The output is compensated by dividing the input:</p>
+<p>$$y = \hat{W} \cdot (x / \beta_{\text{per-channel}})$$</p>
+<p>The net effect: salient channels receive higher quantization precision at the cost of slightly more error in non-salient channels. Since salient channels dominate the output, the total error decreases.</p>
+<hr />
+<h2 id="algorithm--format--runtime"><a class="header" href="#algorithm--format--runtime">Algorithm ≠ Format ≠ Runtime</a></h2>
+<p>A source of confusion in the quantization ecosystem is conflating three independent concerns:</p>
+<p><strong>Algorithm</strong> (GPTQ, AWQ, naive rounding): determines <em>how</em> each weight value is mapped to an integer. This runs once, offline, and produces a set of quantized weights.</p>
+<p><strong>Format</strong> (GGUF, GPTQ-format, AWQ-format, safetensors): determines <em>how</em> the quantized model is stored on disk — the layout of weight data, scale metadata, group size information, and any other parameters.</p>
+<p><strong>Runtime</strong> (llama.cpp, vLLM, TensorRT-LLM, ExLlamaV2): determines <em>what executes</em> the quantized model at inference time — how weights are loaded, dequantized, and multiplied.</p>
+<p>These three are independent:</p>
+<ul>
+<li>GPTQ (algorithm) can produce weights stored in GGUF (format) and executed by llama.cpp (runtime).</li>
+<li>The same GPTQ weights can be stored in a different format and executed by a different runtime.</li>
+<li>AWQ (algorithm) and GPTQ (algorithm) can both target the same format and runtime.</li>
+</ul>
+<p>When someone says "I'm using GPTQ," they mean the algorithm was used to choose the integer weight values. They are not describing the format or the runtime. Some communities use "GPTQ" to refer to a storage format; in this book we use it strictly as the offline quantization algorithm. Keeping these three concerns separate prevents a class of confusion that is common in practice.</p>
+<hr />
+<h2 id="both-use-calibration-data"><a class="header" href="#both-use-calibration-data">Both Use Calibration Data</a></h2>
+<p>Both GPTQ and AWQ require a small calibration dataset — typically 128–256 samples from a representative corpus. But they use calibration data <em>differently</em> from the standard observers in Chapter 9:</p>
+<ul>
+<li>Chapter 9's observers use calibration data to estimate <em>ranges</em> — where activations fall, how wide the scale should be. This is <em>range estimation</em>.</li>
+<li>GPTQ uses calibration data to compute the <em>Hessian</em> — which weights interact most with actual inputs. This is <em>sensitivity estimation</em>.</li>
+<li>AWQ uses calibration data to measure <em>activation magnitudes</em> — which channels carry the most signal. This is <em>saliency estimation</em>.</li>
+</ul>
+<p>All three can suffer from calibration drift (Chapter 13, Pattern 4): if the calibration data is unrepresentative of deployment data, the algorithm's decisions will be suboptimal. The same calibration insufficiency tests from Chapter 9 apply — check scale stability across subsets, check range exceedance on held-out data.</p>
+<p><strong>Canonical categories addressed:</strong> GPTQ and AWQ primarily mitigate Resolution Collapse (weights) at int4 by choosing better integer assignments than naive rounding. Secondarily, they address Distribution Mismatch / Budget Waste (weights) when some channels dominate error and need protection. They remain vulnerable to Calibration Mismatch if calibration data is unrepresentative, and do not address activation-side patterns (Tail Clipping, Cumulative Rounding Noise) because activations are not quantized.</p>
+<p><strong>Choosing between GPTQ and AWQ:</strong> GPTQ uses more offline compute (Hessian computation, sequential redistribution) and often achieves higher fidelity. AWQ is cheaper to run offline and provides a strong practical default. Both depend on calibration representativeness. The choice is typically driven by offline compute budget and empirical accuracy on a validation set for the target model.</p>
+<hr />
+<h2 id="conceptual-consolidation"><a class="header" href="#conceptual-consolidation">Conceptual Consolidation</a></h2>
+<p>GPTQ and AWQ are offline algorithms that improve upon naive rounding for weight quantization. GPTQ redistributes rounding error across weights using second-order information. AWQ protects salient channels by scaling them before quantization. Both use small calibration datasets and run once, producing quantized weights that are then stored in a format and executed by a runtime — three independent concerns.</p>
+<p><strong>Choosing between GPTQ and AWQ.</strong> GPTQ generally produces slightly more accurate results because it uses full Hessian-guided error redistribution, but it takes longer to run (hours for large models). AWQ is faster (minutes to an hour) and often achieves similar practical quality because it focuses on protecting the channels that matter most. For a first attempt, AWQ is the pragmatic starting point. Switch to GPTQ when AWQ leaves a measurable accuracy gap.</p>
+<h3 id="deployment-reality-what-breaks-in-practice"><a class="header" href="#deployment-reality-what-breaks-in-practice">Deployment Reality: What Breaks in Practice</a></h3>
+<p>The theory above assumes a smooth path from algorithm → format → runtime. In practice, each runtime has constraints:</p>
+<div class="table-wrapper"><table><thead><tr><th>Runtime</th><th>Supports GPTQ?</th><th>Supports AWQ?</th><th>Common Pitfalls</th></tr></thead><tbody>
+<tr><td><strong>vLLM</strong></td><td>Yes (via Marlin/GPTQ kernels)</td><td>Yes (via AWQ kernels)</td><td>Older GPTQ checkpoints may use incompatible group sizes; verify <code>quantize_config.json</code></td></tr>
+<tr><td><strong>TensorRT-LLM</strong></td><td>Yes (via weight-only plugin)</td><td>Limited</td><td>Custom calibration pipeline; GPTQ checkpoint conversion required</td></tr>
+<tr><td><strong>llama.cpp / GGUF</strong></td><td>GPTQ → GGUF conversion available</td><td>AWQ → GGUF conversion available</td><td>Quality depends on quantization type (Q4_K_M vs Q4_0); not all group sizes supported</td></tr>
+<tr><td><strong>ExLlamaV2</strong></td><td>Yes (native GPTQ)</td><td>No</td><td>Optimized for GPTQ specifically; fastest for GPTQ inference</td></tr>
+<tr><td><strong>HuggingFace Transformers</strong></td><td>Yes (via <code>auto-gptq</code>)</td><td>Yes (via <code>autoawq</code>)</td><td>Slower than specialized runtimes; useful for validation, not production throughput</td></tr>
+</tbody></table>
+</div>
+<p>The algorithm–format–runtime separation means you can quantize with GPTQ but deploy on any runtime that reads the resulting format. However, not all runtimes support all group sizes, bit widths, or packing schemes. Always verify that your target runtime can load and execute the specific checkpoint you produced.</p>
+<p>These algorithms operate within the framework established throughout this book. They do not change the grid (Chapter 2), the scale contract (Chapter 3), or the hardware constraints (Chapter 4). They improve how weight values are assigned to grid points — making better use of the finite representational budget that int4 provides.</p>
+<hr />
+<h2 id="the-decompression-cost"><a class="header" href="#the-decompression-cost">The Decompression Cost</a></h2>
+<p>Weight-only quantization requires a <em>dequantization kernel</em> that converts int4 weights to float16 before the matrix multiply. This kernel is not free.</p>
+<p>For each group of $g$ weights, the kernel must: load the packed int4 data, unpack each 4-bit value from its packed byte, load the group's scale (and zero-point if asymmetric), multiply each value by the scale and add the offset, and write the float16 result to registers or shared memory.</p>
+<p>On modern GPUs, this dequantization runs concurrently with compute — the memory bandwidth for loading int4 weights is the bottleneck, and the dequantization arithmetic fits in the gaps. But on less capable hardware — mobile GPUs, NPUs, older data center GPUs — the dequantization kernel can become a compute bottleneck, partially or fully canceling the bandwidth savings.</p>
+<p>Smaller group sizes make this worse. Group size 32 requires loading a scale every 32 weights. Group size 128 requires one scale per 128 weights. The metadata loads interleave with weight loads, and at small group sizes, the scale loading overhead becomes measurable.</p>
+<p>A practical rule of thumb (must be profiled per target): if the dequantization kernel takes more than ~20% of the total matmul time, the bandwidth savings from int4 are being eroded by decompression cost. This is hardware-dependent.</p>
+<p><strong>Worked example: dequantization overhead.</strong> For a [4096 × 4096] matmul with int4 weights and group size 128:</p>
+<ul>
+<li>Weight data: $4096 \times 4096 \times 0.5 = 8.35$ MB. At 2 TB/s bandwidth: load time $\approx 4.2$ µs.</li>
+<li>Scale metadata: 131,072 scales × 2 bytes = 0.26 MB. Load time $\approx 0.13$ µs.</li>
+<li>Dequant kernel (unpack 4-bit, multiply by scale, store float16): ~8–12 µs (hardware-dependent, includes unpacking and scale lookups every 128 weights).</li>
+<li>Float16 matmul: ~25 µs.</li>
+<li>Total: ~37–41 µs. Dequant fraction: $10 / 39 \approx 26%$.</li>
+</ul>
+<p>At 26%, dequantization is above the 20% threshold — the bandwidth savings from int4 are being partially eaten by decompression. On a faster GPU with better dequant fusion, this drops to ~15%. On a weaker GPU, it can reach 40%. Profile before committing to a group size.</p>
+<p>If dequantization dominates, the symptom is effectively a Dequant Launch Overhead pattern — the int4 bandwidth savings are real, but the compute overhead to unpack and convert cancels the gain.</p>
+<hr />
+<h2 id="beyond-integers-nf4-and-the-non-uniform-grid"><a class="header" href="#beyond-integers-nf4-and-the-non-uniform-grid">Beyond Integers: NF4 and the Non-Uniform Grid</a></h2>
+<p>Everything in this book so far assumes a <em>uniform</em> quantization grid — equal spacing between adjacent levels. Int4 divides the range into 16 equal steps. But neural network weight distributions are not uniform. They are often roughly bell-shaped — concentrated near zero with fewer values at the extremes.</p>
+<p>NormalFloat4 (NF4), introduced in QLoRA, replaces the uniform grid with a <em>non-uniform</em> grid whose levels are placed at the quantiles of a standard normal distribution. The 16 levels are:</p>
+<p>$${-1.0, -0.6962, -0.5251, -0.3949, -0.2844, -0.1848, -0.0911, 0.0, 0.0796, 0.1609, 0.2461, 0.3379, 0.4407, 0.5626, 0.7230, 1.0}$$</p>
+<p>These levels are denser near zero (where most weights cluster) and sparser at the tails (where few weights exist). The result: NF4 has lower average quantization error than uniform int4 for bell-shaped weight distributions, because the grid allocates more of its representational budget where the data actually lives.</p>
+<p>The trade-off: NF4 requires a lookup table for dequantization instead of a simple multiply-add. This is slightly more expensive on hardware that lacks LUT support. And the non-uniform spacing means NF4 values cannot participate in integer multiply-accumulate — they must be dequantized to float16 before any computation, making NF4 strictly a weight-only format. NF4 cannot be used for activations because activations must remain in a compute-friendly format.</p>
+<p>NF4's relationship to this book's framework: it changes the grid (Chapter 2) from uniform to distribution-matched. The scale contract (Chapter 3) still applies — each group has a scale that maps the normalized NF4 values to the actual weight range. The error taxonomy (Chapter 5) still applies — but the rounding error for typical values is smaller because the grid is denser where data is dense.</p>
+<p>FP8 formats (E4M3 and E5M2) extend this idea further and are covered in Chapter 19.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="chapter16_weight_only_and_groupwise_quantization.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="chapter18_the_kv_cache_bottleneck.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="chapter16_weight_only_and_groupwise_quantization.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="chapter18_the_kv_cache_bottleneck.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

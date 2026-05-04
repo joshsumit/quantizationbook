@@ -1,0 +1,15 @@
+[book]
+title = "Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference"
+authors = ["Sumit Joshi"]
+description = "A Practitioner's Guide to Model Compression for Real Hardware"
+src = "src"
+language = "en"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = ""
+additional-css = []

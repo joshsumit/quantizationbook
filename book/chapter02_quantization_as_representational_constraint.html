@@ -1,0 +1,327 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Quantization as a Representational Constraint - Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A Practitioner&#x27;s Guide to Model Compression for Real Hardware">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="chapter-2-quantization-as-a-representational-constraint"><a class="header" href="#chapter-2-quantization-as-a-representational-constraint">Chapter 2: Quantization as a Representational Constraint</a></h1>
+<h2 id="what-float32-gives-you"><a class="header" href="#what-float32-gives-you">What Float32 Gives You</a></h2>
+<p>A 32-bit floating-point number can represent approximately 4.3 billion distinct bit patterns. These values are not evenly distributed — they are packed densely near zero and spread apart as magnitude increases. Near zero, float32 is extremely dense: within [0, 1] you get on the order of a billion distinct representable values. At large magnitudes the spacing grows rapidly — between 1,000 and 1,001, roughly 8,000 values remain.</p>
+<p>For neural network purposes, this density is effectively infinite. Two activations that differ by 0.00001 are stored as genuinely different numbers. The network can learn to depend on differences that small, and the representation will preserve them faithfully.</p>
+<p>This is the representational budget that float32 provides: a near-continuous space where any value can be stored and distinguished from its neighbors.</p>
+<hr />
+<h2 id="what-int8-gives-you"><a class="header" href="#what-int8-gives-you">What Int8 Gives You</a></h2>
+<p>An 8-bit integer has exactly 256 distinct values. That is the entire budget — not 4 billion, not a million, but 256. These values are evenly spaced across whatever range they are assigned to cover.</p>
+<p>Suppose the range is [-1.0, 1.0]. Those 256 levels must span 2.0 units of real-valued range. The spacing between adjacent representable values — the <em>step size</em> — is given by:</p>
+<p>$$\Delta = \frac{r_{\max} - r_{\min}}{L - 1}$$</p>
+<p>where $L$ is the number of levels and we assume the representable endpoints align with the range boundaries (levels include both endpoints — this is the standard convention in most quantization implementations). We use $L - 1$ in the denominator, not $L$, because we are counting the <em>gaps between</em> levels rather than the levels themselves: with 256 levels, there are 255 gaps. For [-1.0, 1.0] with $L = 256$:</p>
+<p>$$\Delta = \frac{2.0}{255} \approx 0.00784$$</p>
+<p>Every real value that falls within this range gets mapped to the nearest grid point. The value 0.50000 maps to one grid point. The value 0.50700 maps to the same grid point. In float32, these were different numbers. In int8, they are identical. The distinction between them no longer exists.</p>
+<hr />
+<blockquote>
+<p><strong>Key Terms — Quick Reference</strong></p>
+<p>These terms appear throughout the book. Brief definitions are here for orientation; each is explained fully in its own chapter.</p>
+<div class="table-wrapper"><table><thead><tr><th>Term</th><th>Meaning</th><th>Chapter</th></tr></thead><tbody>
+<tr><td><strong>Grid</strong></td><td>The fixed set of representable integer values (e.g., 256 for int8)</td><td>Ch. 2</td></tr>
+<tr><td><strong>Scale (S)</strong></td><td>The step size between adjacent grid points; converts integers back to real values</td><td>Ch. 3</td></tr>
+<tr><td><strong>Zero-point (Z)</strong></td><td>An integer offset that aligns the grid's zero with the real-valued zero</td><td>Ch. 3</td></tr>
+<tr><td><strong>Boundary</strong></td><td>A point in the computation graph where the quantization domain (scale, zero-point, precision) changes</td><td>Ch. 6</td></tr>
+<tr><td><strong>Domain</strong></td><td>The (scale, zero-point, precision) triple that governs how integers are interpreted</td><td>Ch. 6</td></tr>
+<tr><td><strong>Requantization</strong></td><td>Rescaling an int32 accumulator result back to int8 for the next layer</td><td>Ch. 7</td></tr>
+<tr><td><strong>Fusion</strong></td><td>Merging consecutive operations (e.g., Conv + BN + ReLU) to eliminate intermediate boundaries</td><td>Ch. 8</td></tr>
+<tr><td><strong>Observer</strong></td><td>A temporary module that records activation ranges during calibration</td><td>Ch. 9</td></tr>
+<tr><td><strong>Accumulator</strong></td><td>The wider-precision register (typically int32) that holds matmul partial sums</td><td>Ch. 6</td></tr>
+<tr><td><strong>Calibration</strong></td><td>Running representative data through the model to determine activation scales</td><td>Ch. 9</td></tr>
+</tbody></table>
+</div></blockquote>
+<hr />
+<h2 id="the-grid"><a class="header" href="#the-grid">The Grid</a></h2>
+<p>Quantization places a uniform grid over a range. The grid has a fixed number of points — 256 for int8, 16 for int4 — and the spacing between them is constant. Every real value snaps to the closest grid point, the way a ruler with millimeter marks cannot distinguish between 3.2 mm and 3.3 mm if it only has marks at each millimeter.</p>
+<p>Consider a layer whose activation values in float32 fall in the range [-1.0, 1.0]. Under int8 quantization with 256 levels:</p>
+<ul>
+<li>The value 0.3021 maps to grid point $0.2980$ (integer index 166).</li>
+<li>The value 0.3058 also maps to grid point $0.2980$ (integer index 166).</li>
+<li>These two values — distinct in float32 — are now the same number. Whatever functional difference the network relied on between 0.3021 and 0.3058 is gone.</li>
+</ul>
+<p>The mapping rule for this simplified case (unsigned codes 0 to $L-1$):</p>
+<p>$$q = \text{round}!\left(\frac{r - r_{\min}}{\Delta}\right), \qquad r' = r_{\min} + q \cdot \Delta$$</p>
+<p>For 0.3021 with $r_{\min} = -1.0$ and $\Delta \approx 0.00784$: $q \approx \text{round}(1.3021,/,0.00784) = 166$, recovering $r' = -1.0 + 166 \times 0.00784 = 0.2980$.</p>
+<h3 id="worked-example-one-range-three-outcomes"><a class="header" href="#worked-example-one-range-three-outcomes">Worked Example: One Range, Three Outcomes</a></h3>
+<p>To anchor the intuition for the rest of the book, here is a single complete example showing scale computation, clean rounding, and clipping — the three things that happen to every value entering a quantized layer.</p>
+<p><strong>Setup.</strong> A layer's activation range is $[-1.2, 1.0]$. We quantize to int8 asymmetric (unsigned codes $0$ to $255$).</p>
+<p><strong>Step 1 — Scale and zero-point.</strong></p>
+<p>$$S = \frac{r_{\max} - r_{\min}}{255} = \frac{1.0 - (-1.2)}{255} = \frac{2.2}{255} \approx 0.008627$$</p>
+<p>$$Z = \text{round}!\left(\frac{0 - r_{\min}}{S}\right) = \text{round}!\left(\frac{1.2}{0.008627}\right) = \text{round}(139.1) = 139$$</p>
+<p>So integer code 139 corresponds to real value 0.0 (approximately). The grid spans from code 0 ($= -1.2$) to code 255 ($= 1.0$).</p>
+<p><strong>Step 2 — A value that rounds cleanly.</strong> Take $r = 0.37$.</p>
+<p>$$q = \text{round}!\left(\frac{0.37}{0.008627}\right) + 139 = \text{round}(42.89) + 139 = 43 + 139 = 182$$</p>
+<p>$$r' = (182 - 139) \times 0.008627 = 43 \times 0.008627 = 0.3710$$</p>
+<p>Error: $|0.37 - 0.3710| = 0.0010$. Well within the maximum rounding error of $S/2 \approx 0.0043$. The grid handled this value without trouble.</p>
+<p><strong>Step 3 — A value that clips.</strong> Take $r = 1.5$ (outside the range).</p>
+<p>$$q = \text{round}!\left(\frac{1.5}{0.008627}\right) + 139 = \text{round}(173.8) + 139 = 174 + 139 = 313$$</p>
+<p>But int8 unsigned can only hold codes $0$ to $255$. Code 313 is clamped to 255.</p>
+<p>$$r' = (255 - 139) \times 0.008627 = 116 \times 0.008627 = 1.0007 \approx 1.0$$</p>
+<p>Error: $|1.5 - 1.0| = 0.5$. That is ~$500\times$ larger than the rounding error above. The value was outside the representable range and was crushed to the boundary. This is clipping error (Chapter 5).</p>
+<p><strong>Takeaway.</strong> Same grid, same scale — two completely different error magnitudes. The value inside the range lost 0.001. The value outside lost 0.5. This is why range selection (Chapter 9) determines whether quantization succeeds or fails.</p>
+<p>The grid does not care which values are important. It is uniform — and uniform for a reason: constant step size maps directly to integer arithmetic, which is what hardware can execute cheaply and in bulk. The grid does not allocate more resolution where the network needs it and less where it does not. Every region of the range gets the same step size, regardless of how many values actually live there. Later chapters will exploit distribution structure through per-channel scaling and groupwise quantization, but the underlying grid remains uniform.</p>
+<hr />
+<h2 id="the-rangeprecision-trade-off"><a class="header" href="#the-rangeprecision-trade-off">The Range–Precision Trade-Off</a></h2>
+<p>The step size depends on two things: the range being covered and the number of grid points available. With a fixed number of grid points (256 for int8), a wider range forces a larger step size.</p>
+<p>Take the same 256 levels and expand the range from [-1.0, 1.0] to [-10.0, 10.0]:</p>
+<p>$$\Delta = \frac{20.0}{255} \approx 0.0784$$</p>
+<p>The step size increased 10×. Values that were distinguishable under the narrow range are no longer distinguishable under the wide range. The value 0.3021 and the value 0.3500 — clearly different numbers — now map to the same grid point.</p>
+<p>This is the fundamental trade-off: <em>wider range means coarser resolution</em>. If the range must accommodate a few extreme values, the resolution for all other values suffers. The grid has a fixed budget, and it must be spread across whatever range is claimed. Rule of thumb: if outlier tails force the range wide, effective resolution on the dense bulk collapses.</p>
+<p>Now consider int4 — 16 levels instead of 256. Under the [-1.0, 1.0] range:</p>
+<p>$$\Delta = \frac{2.0}{15} \approx 0.1333$$</p>
+<p>Sixteen grid points to cover 2.0 units of range. Enumerating them: 0.0, 0.1333, 0.2667, 0.4, 0.5333, 0.6667, 0.8, 0.9333, 1.0667, 1.2, 1.3333, 1.4667, 1.6, 1.7333, 1.8667, 2.0 — all 16 values spaced at exactly 0.1333. The entire interval from 0.0 to 0.1333 collapses to a single representable value. Values of 0.05, 0.08, and 0.12 — all distinct in float32, all distinguishable in int8 — become the same number in int4.</p>
+<p>The coarseness at 4-bit is not subtle. It is a qualitative change in what the representation can express.</p>
+<hr />
+<h2 id="what-is-actually-lost"><a class="header" href="#what-is-actually-lost">What Is Actually Lost</a></h2>
+<p>The loss is not "precision" in the colloquial sense, as if the numbers become slightly noisy. The loss is the ability to distinguish values that were previously distinct.</p>
+<p>When two different activation values collapse to the same grid point, the network downstream sees identical inputs where it previously saw different ones. If the network's learned computation depended on that difference — if one path should fire and the other should not — the quantized representation cannot support that distinction. The decision boundary that existed in float32 has been erased from the representable set.</p>
+<p>This is not degradation. It is a constraint. The model must now express everything it needs to express using only the values that survive the grid. If its learned representations happen to require distinctions finer than the step size, those representations break. If they do not, quantization costs nothing.</p>
+<p>Whether a given model survives this constraint depends on the relationship between its learned value distributions and the grid imposed by quantization. That relationship is the subject of the chapters that follow.</p>
+<blockquote>
+<p><strong>📊 INSERT DIAGRAM: The Range–Precision Trade-Off</strong></p>
+<p>Three side-by-side number-line diagrams, all using int8 (256 levels), showing the same distribution of activation values (a bell curve centered near 0) under three different range choices:</p>
+<pre><code>Panel A: Range [-1, 1] — "Tight range"
+  - Grid points densely packed (step = 0.0078)
+  - Bell curve fits perfectly inside the range
+  - No clipping, high precision
+  - Label: "✓ Best case: range matches distribution"
+
+Panel B: Range [-10, 10] — "Too wide"
+  - Grid points spread apart (step = 0.078)
+  - Bell curve occupies only ~10% of the grid
+  - No clipping, but ~230 of 256 codes are wasted in empty tails
+  - Label: "✗ Wasted resolution: most codes represent values that never appear"
+
+Panel C: Range [-0.5, 0.5] — "Too narrow"
+  - Grid points very dense inside range (step = 0.0039)
+  - Tails of the bell curve extend past ±0.5 and are clipped
+  - High precision inside, but values outside are crushed to boundary
+  - Label: "✗ Clipping: tail values destroyed"
+</code></pre>
+<p>Annotate: "This is the fundamental trade-off (Ch.5, Ch.9): widen the range and lose precision, or narrow it and clip outliers."</p>
+</blockquote>
+<hr />
+<h2 id="conceptual-consolidation"><a class="header" href="#conceptual-consolidation">Conceptual Consolidation</a></h2>
+<p>Quantization is not "using lower precision." It is operating within a finite grid of representable values, uniformly spaced, with a step size determined by the range and the number of available levels.</p>
+<p>Whenever you evaluate a quantized model, the question is not "how much precision did we lose?" The question is: does the step size preserve the distinctions the model depends on? If the answer is yes for every layer, quantization is free. If not, the model's behavior changes — and understanding where and why is the purpose of this book.</p>
+<p>This chapter treated the simplest uniform grid. The next chapter makes it practical by introducing scale and zero-point.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="chapter01_why_quantization_exists.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="chapter03_scale_and_zero_point.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="chapter01_why_quantization_exists.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="chapter03_scale_and_zero_point.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
