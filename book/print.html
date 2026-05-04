@@ -376,7 +376,7 @@ Panel C: Range [-0.5, 0.5] — "Too narrow"
 <p>This chapter treated the simplest uniform grid. The next chapter makes it practical by introducing scale and zero-point.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="chapter-3-scale-and-zero-point"><a class="header" href="#chapter-3-scale-and-zero-point">Chapter 3: Scale and Zero-Point</a></h1>
 <blockquote>
-<p><strong>Notation used in this chapter:</strong> $r$ denotes a real floating-point value; $q$ denotes a quantized integer; $S$ (scale) is the real-valued width of one quantization step; $Z$ (zero-point) is the integer that represents real zero; $$q_{\min}$$ and $$q_{\max}$$ are the integer endpoints (e.g., 0 and 255 for uint8, or -128 and 127 for int8).</p>
+<p><strong>Notation used in this chapter:</strong> \( r \) denotes a real floating-point value; $q$ denotes a quantized integer; $S$ (scale) is the real-valued width of one quantization step; $Z$ (zero-point) is the integer that represents real zero; $$q_{\min}$$ and $$q_{\max}$$ are the integer endpoints (e.g., 0 and 255 for uint8, or -128 and 127 for int8).</p>
 </blockquote>
 <h2 id="the-mapping-problem"><a class="header" href="#the-mapping-problem">The Mapping Problem</a></h2>
 <p>A quantization grid provides a fixed number of integer levels spanning a range. But a question remains unanswered. Given a range of real values — say, activations that fall between -2.3 and 5.1 — and 256 integers (0 through 255), how do you decide which integer represents which real value?</p>
