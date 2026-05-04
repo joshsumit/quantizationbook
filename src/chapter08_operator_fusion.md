@@ -73,19 +73,19 @@ To see why this matters, trace a concrete value through both paths.
 
 Suppose the Conv layer produces an int32 accumulator value of 47,382 for a particular output position. Under unfused execution:
 
-**Boundary 1** (after Conv): $47{,}382$ rescales and rounds to int8 value $126$.
+**Boundary 1** (after Conv): \\(47{,}382\\) rescales and rounds to int8 value \\(126\\).
 
-BatchNorm then operates on this int8 value $126$. Suppose BN's scale and shift produce an int32 accumulator of $8{,}241$.
+BatchNorm then operates on this int8 value \\(126\\). Suppose BN's scale and shift produce an int32 accumulator of \\(8{,}241\\).
 
-**Boundary 2** (after BN): $8{,}241$ rescales and rounds to int8 value $93$.
+**Boundary 2** (after BN): \\(8{,}241\\) rescales and rounds to int8 value \\(93\\).
 
 ReLU passes 93 through unchanged (positive value).
 
-Final output: int8 value $93$.
+Final output: int8 value \\(93\\).
 
-Under fused execution, the same Conv produces int32 value $47{,}382$. BN's scale and shift are applied directly to this int32 value, producing int32 value $8{,}247$ (different from 8,241 because the input was not rounded to int8 first). ReLU passes it through.
+Under fused execution, the same Conv produces int32 value \\(47{,}382\\). BN's scale and shift are applied directly to this int32 value, producing int32 value \\(8{,}247\\) (different from 8,241 because the input was not rounded to int8 first). ReLU passes it through.
 
-**Single boundary**: $8{,}247$ rescales and rounds to int8 value $93$.
+**Single boundary**: \\(8{,}247\\) rescales and rounds to int8 value \\(93\\).
 
 In this case the final outputs happen to match. But change the numbers slightly — as happens across thousands of output positions — and the unfused path produces values that differ from the fused path by one or two int8 steps. Across an entire layer, these differences accumulate. Across an entire model, they compound.
 
@@ -97,11 +97,11 @@ The fused result is closer to the float32 reference because it rounds once inste
 
 Fusion eliminates boundaries between operators that form a chain. But not all operator combinations can be fused. Elementwise operations — addition, concatenation, residual connections — require all inputs to share the same scale and zero-point.
 
-Consider a residual addition: the main path and the skip connection meet at an elementwise add. If the main path has output scale $S_1 = 0.042$ and the skip connection has output scale $S_2 = 0.037$, the integers from the two paths represent different real values per step. Adding them directly would be meaningless — it would be like adding a measurement in inches to a measurement in centimeters.
+Consider a residual addition: the main path and the skip connection meet at an elementwise add. If the main path has output scale \\(S_1 = 0.042\\) and the skip connection has output scale \\(S_2 = 0.037\\), the integers from the two paths represent different real values per step. Adding them directly would be meaningless — it would be like adding a measurement in inches to a measurement in centimeters.
 
 To make the addition valid, one or both paths must be *rescaled* to a common scale before the add. This rescaling is itself a requantization step — it introduces rounding and clamping. The boundary that fusion was supposed to eliminate reappears at the merge point.
 
-This is the scale alignment invariant: **an integer-only elementwise add requires all inputs to have identical $(S, Z)$ parameters.** When scales mismatch, the compiler must insert a rescale (requantization) or fall back to a higher-precision path — either way adding a boundary that increases error.
+This is the scale alignment invariant: **an integer-only elementwise add requires all inputs to have identical \\((S, Z)\\) parameters.** When scales mismatch, the compiler must insert a rescale (requantization) or fall back to a higher-precision path — either way adding a boundary that increases error.
 
 *Accuracy pattern: Distribution Mismatch — forcing a common scale may waste budget on one branch's unused range. Runtime pattern: Silent Fallback — if the quantized add is unsupported, the runtime falls back to float.*
 
@@ -137,7 +137,7 @@ Operator sequences that do not match a supported recipe remain unfused. The inte
 
 A fused kernel executes as a single kernel launch — one memory read for the inputs, one memory write for the outputs, no intermediate materialization. An unfused sequence often forces writing the intermediate int8 tensor to memory and reading it back for each subsequent operation. The cost is not just computational — each memory round trip consumes bandwidth, which is the bottleneck established in Chapter 1.
 
-**Concrete memory cost of unfused execution.** For a Conv layer producing a [1, 256, 56, 56] activation tensor in int8 (0.8 MB), unfused Conv → BN → ReLU requires: write after Conv (0.8 MB), read for BN (0.8 MB), write after BN (0.8 MB), read for ReLU (0.8 MB), write after ReLU (0.8 MB), plus one final read by the next layer (0.8 MB). Total: 6 memory transactions × 0.8 MB = 4.8 MB. Fused Conv-BN-ReLU: write once (0.8 MB), read once by next layer (0.8 MB). Total: 1.6 MB. The unfused path moves 3× more data for the same computation. At 900 GB/s, the unfused overhead is $(4.8 - 1.6) / 900{,}000 \approx 3.6$ µs per layer. Across 50 layers in a ResNet: 180 µs of pure bandwidth waste.
+**Concrete memory cost of unfused execution.** For a Conv layer producing a [1, 256, 56, 56] activation tensor in int8 (0.8 MB), unfused Conv → BN → ReLU requires: write after Conv (0.8 MB), read for BN (0.8 MB), write after BN (0.8 MB), read for ReLU (0.8 MB), write after ReLU (0.8 MB), plus one final read by the next layer (0.8 MB). Total: 6 memory transactions × 0.8 MB = 4.8 MB. Fused Conv-BN-ReLU: write once (0.8 MB), read once by next layer (0.8 MB). Total: 1.6 MB. The unfused path moves 3× more data for the same computation. At 900 GB/s, the unfused overhead is \\((4.8 - 1.6) / 900{,}000 \approx 3.6\\) µs per layer. Across 50 layers in a ResNet: 180 µs of pure bandwidth waste.
 
 ---
 

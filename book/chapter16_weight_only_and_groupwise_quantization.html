@@ -195,20 +195,20 @@
 <p>Per-channel quantization (one scale per output row) helps — each row gets its own range. But within a row, variance can still be high. The solution is to go finer.</p>
 <hr />
 <h2 id="group-wise-quantization"><a class="header" href="#group-wise-quantization">Group-Wise Quantization</a></h2>
-<p>Group-wise quantization assigns a separate scale (and optionally zero-point) to each <em>group</em> of consecutive weights along a dimension. Instead of one scale per tensor or one scale per channel, there is one scale per group of $g$ weights.</p>
+<p>Group-wise quantization assigns a separate scale (and optionally zero-point) to each <em>group</em> of consecutive weights along a dimension. Instead of one scale per tensor or one scale per channel, there is one scale per group of \(g\) weights.</p>
 <p>Consider a weight matrix of shape [4096, 4096] — 16.7 million weights.</p>
 <p><strong>Per-tensor (group size = all):</strong> 1 scale. The entire matrix shares one range. If any region has extreme values, all regions pay the resolution cost.</p>
 <p><strong>Per-channel (group size = 4096, one per row):</strong> 4,096 scales. Each row gets its own range. Variance between rows is handled, but variance within a row is not.</p>
-<p><strong>Group-wise (group size = 128):</strong> Each row is divided into groups of 128 weights. Each group gets its own scale. Total scales: $4096 \times (4096 / 128) = 131{,}072$.</p>
+<p><strong>Group-wise (group size = 128):</strong> Each row is divided into groups of 128 weights. Each group gets its own scale. Total scales: \(4096 \times (4096 / 128) = 131{,}072\).</p>
 <p><strong>Detailed example.</strong> Take row 1 of a [4096 × 4096] weight matrix, divided into 32 groups of 128 weights each:</p>
 <ul>
-<li>Group 1 (columns 0–127): weights in [-0.12, 0.15], range = 0.27. Scale $= 0.27 / 15 = 0.018$. A weight of 0.05 maps to code $\text{round}((0.05 - (-0.12)) / 0.018) = \text{round}(9.44) = 9$, dequantized to $-0.12 + 9 \times 0.018 = 0.042$. Error: 0.008.</li>
-<li>Group 17 (columns 2176–2303): weights in [-0.48, 0.47], range = 0.95. Scale $= 0.95 / 15 = 0.063$. The same weight 0.05 maps to code $\text{round}((0.05 - (-0.48)) / 0.063) = \text{round}(8.41) = 8$, dequantized to $-0.48 + 8 \times 0.063 = 0.024$. Error: 0.026 — 3.3× worse.</li>
+<li>Group 1 (columns 0–127): weights in [-0.12, 0.15], range = 0.27. Scale \(= 0.27 / 15 = 0.018\). A weight of 0.05 maps to code \(\text{round}((0.05 - (-0.12)) / 0.018) = \text{round}(9.44) = 9\), dequantized to \(-0.12 + 9 \times 0.018 = 0.042\). Error: 0.008.</li>
+<li>Group 17 (columns 2176–2303): weights in [-0.48, 0.47], range = 0.95. Scale \(= 0.95 / 15 = 0.063\). The same weight 0.05 maps to code \(\text{round}((0.05 - (-0.48)) / 0.063) = \text{round}(8.41) = 8\), dequantized to \(-0.48 + 8 \times 0.063 = 0.024\). Error: 0.026 — 3.3× worse.</li>
 </ul>
-<p>Group 1’s narrow range gives it 3.3× better precision than Group 17. Under per-tensor quantization, both groups would share the matrix-wide range (say [-0.52, 0.50], scale $= 1.02/15 = 0.068$), giving Group 1 only $0.27/0.068 \approx 4$ usable levels instead of 15. Group-wise quantization preserves each group’s local precision.</p>
+<p>Group 1’s narrow range gives it 3.3× better precision than Group 17. Under per-tensor quantization, both groups would share the matrix-wide range (say [-0.52, 0.50], scale \(= 1.02/15 = 0.068\)), giving Group 1 only \(0.27/0.068 \approx 4\) usable levels instead of 15. Group-wise quantization preserves each group’s local precision.</p>
 <p>For a group of 128 weights that all fall in [-0.02, 0.02]:</p>
 <p>$$S = \frac{0.04}{15} \approx 0.00267$$</p>
-<p>Compared to per-tensor with the full [-0.5, 0.5] range where $S = 0.067$, this group's resolution is 25× finer. The weights in this group are represented with precision matched to their actual range.</p>
+<p>Compared to per-tensor with the full [-0.5, 0.5] range where \(S = 0.067\), this group's resolution is 25× finer. The weights in this group are represented with precision matched to their actual range.</p>
 <p><em>Canonical category: group-wise quantization directly addresses Resolution Collapse and Distribution Mismatch / Budget Waste by matching each group's scale to its local range, rather than wasting codes on a globally-set range.</em></p>
 <h3 id="the-overhead"><a class="header" href="#the-overhead">The Overhead</a></h3>
 <p>Each scale is stored alongside the weights. With 131,072 scales at 2 bytes each (float16), the metadata overhead is:</p>
@@ -243,8 +243,8 @@
 <p>Weight-only quantization solves the weight loading bottleneck. But for long-context LLM inference, a second memory bottleneck emerges: the <em>key-value cache</em>.</p>
 <p>During autoregressive generation, each transformer layer stores the key and value projections of all previously generated tokens. For a 70B model with 80 layers, 8 KV heads, and head dimension 128, the KV-cache per token occupies:</p>
 <p>$$80 \times 2 \times 8 \times 128 \times 2 \text{ bytes (float16)} = 327{,}680 \text{ bytes} \approx 320 \text{ KB per token}$$</p>
-<p>At 8,192 tokens of context: $320 \text{ KB} \times 8{,}192 = 2.56 \text{ GB}$.
-At 128,000 tokens: $320 \text{ KB} \times 128{,}000 = 40 \text{ GB}$.</p>
+<p>At 8,192 tokens of context: \(320 \text{ KB} \times 8{,}192 = 2.56 \text{ GB}\).
+At 128,000 tokens: \(320 \text{ KB} \times 128{,}000 = 40 \text{ GB}\).</p>
 <p>The KV-cache grows linearly with sequence length and must be loaded from memory at every generation step. For long sequences, it rivals or exceeds the model weights in memory bandwidth cost.</p>
 <p>KV-cache quantization reduces this cost. Storing keys and values in int8 instead of float16 cuts KV-cache memory by 50%. FP8 (Chapter 19) achieves similar savings with less precision loss due to its non-uniform grid.</p>
 <p>But KV-cache quantization is fundamentally different from weight quantization:</p>

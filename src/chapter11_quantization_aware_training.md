@@ -20,7 +20,7 @@ A fake quantization node does the following:
 
 The output is still floating-point, but it has been rounded to a value that is exactly representable in int8. The network's forward pass sees values as if they were quantized, but the computation remains in floating-point so that gradients can be computed normally.
 
-Consider a weight value of 0.3021 with scale $S = 0.00784$. Fake quantization maps it to the nearest grid point:
+Consider a weight value of 0.3021 with scale \\(S = 0.00784\\). Fake quantization maps it to the nearest grid point:
 
 $$q = \text{round}(0.3021 / 0.00784) = \text{round}(38.54) = 39$$
 $$\hat{r} = 39 \times 0.00784 = 0.3058$$
@@ -59,15 +59,15 @@ with:
 
 $$\frac{\partial \text{round}(x)}{\partial x} \approx 1 \quad \text{(false but useful)}$$
 
-The loss function $L$ is computed using the quantized values (the forward pass is correct). The gradient $\partial L / \partial \hat{w}$ — where $\hat{w}$ is the fake-quantized weight — is exact. STE's approximation only affects the chain rule step from $\hat{w}$ back to $w$. Because the forward quantization error is bounded (within $S/2$), the mismatch between the true staircase sensitivity and the STE surrogate does not explode; in practice it provides a stable descent signal.
+The loss function \\(L\\) is computed using the quantized values (the forward pass is correct). The gradient \\(\partial L / \partial \hat{w}\\) — where \\(\hat{w}\\) is the fake-quantized weight — is exact. STE's approximation only affects the chain rule step from \\(\hat{w}\\) back to \\(w\\). Because the forward quantization error is bounded (within \\(S/2\\)), the mismatch between the true staircase sensitivity and the STE surrogate does not explode; in practice it provides a stable descent signal.
 
-In many implementations, a *clipped STE* is used: gradients pass through normally within the representable range but are set to zero for saturated values (those clamped to $q_{\min}$ or $q_{\max}$). This prevents the optimizer from receiving misleading signals for values that are already at the clamp boundary.
+In many implementations, a *clipped STE* is used: gradients pass through normally within the representable range but are set to zero for saturated values (those clamped to \\(q_{\min}\\) or \\(q_{\max}\\)). This prevents the optimizer from receiving misleading signals for values that are already at the clamp boundary.
 
 Over thousands of iterations, these approximately-correct updates accumulate into weights that genuinely minimize the quantization-affected loss. The model converges not because each gradient step is exact, but because each step moves in roughly the right direction.
 
 ### A Worked Example: STE in Action
 
-Consider a single weight $w = 0.34$ with scale $S = 0.1$ and the current loss gradient $\partial L / \partial y = -0.5$ (the loss wants the output to increase).
+Consider a single weight \\(w = 0.34\\) with scale \\(S = 0.1\\) and the current loss gradient \\(\partial L / \partial y = -0.5\\) (the loss wants the output to increase).
 
 **Forward pass:**
 $$\hat{w} = \text{round}(0.34 / 0.1) \times 0.1 = \text{round}(3.4) \times 0.1 = 3 \times 0.1 = 0.30$$
@@ -84,10 +84,10 @@ $$\frac{\partial \hat{w}}{\partial w} \approx 1 \quad \Rightarrow \quad \frac{\p
 
 The optimizer receives a gradient of -0.5, meaning "increase this weight to reduce loss."
 
-**Weight update** (learning rate $\eta = 0.01$):
+**Weight update** (learning rate \\(\eta = 0.01\\)):
 $$w \leftarrow 0.34 - 0.01 \times (-0.5) = 0.34 + 0.005 = 0.345$$
 
-After the update, $w = 0.345$. Fake quantization still rounds to 0.30 (since $\text{round}(0.345/0.1) = 3$). More updates accumulate. Eventually $w$ crosses 0.35 — the boundary between grid points 3 and 4. At that point:
+After the update, \\(w = 0.345\\). Fake quantization still rounds to 0.30 (since \\(\text{round}(0.345/0.1) = 3\\)). More updates accumulate. Eventually \\(w\\) crosses 0.35 — the boundary between grid points 3 and 4. At that point:
 
 $$\hat{w} = \text{round}(0.35 / 0.1) \times 0.1 = 4 \times 0.1 = 0.40$$
 
@@ -97,7 +97,7 @@ The quantized weight jumps from 0.30 to 0.40. The loss changes. The optimizer se
 
 ## Fixed vs Learned Quantization Parameters
 
-In standard QAT, the scale and zero-point are **not** learned by gradient descent. They are computed by an internal observer — the same kind of observer from Chapter 9 — that tracks the running statistics (min, max, or histogram) of the values passing through the fake quantization node. The observer updates $S$ and $Z$ as statistics change during training, but these updates are based on observed ranges, not on gradients from the loss function.
+In standard QAT, the scale and zero-point are **not** learned by gradient descent. They are computed by an internal observer — the same kind of observer from Chapter 9 — that tracks the running statistics (min, max, or histogram) of the values passing through the fake quantization node. The observer updates \\(S\\) and \\(Z\\) as statistics change during training, but these updates are based on observed ranges, not on gradients from the loss function.
 
 This means standard QAT learns *where the weights should be* (via STE), but the *grid itself* — its spacing and offset — is fixed by the observer. The weights adapt to fit a grid that is determined by statistics, not by the task loss.
 
@@ -105,14 +105,14 @@ For int8, this works well. With 256 grid points, the grid is fine enough that it
 
 For int4 (16 levels) or int2 (4 levels), the grid is so coarse that its exact placement matters enormously. Shifting the scale by 5% can move every grid point by a full step size, potentially changing which code every weight snaps to. At 4 bits, the observer-derived grid may not be optimal — a slightly different scale could produce lower task loss.
 
-**Learnable fake quantization** addresses this by treating $S$ and $Z$ as trainable parameters with `requires_grad=True`. During the backward pass, gradients flow not only through the STE to the weights, but also to the scale and zero-point themselves. The optimizer adjusts the grid boundaries to minimize the loss — the grid adapts to the weights at the same time the weights adapt to the grid.
+**Learnable fake quantization** addresses this by treating \\(S\\) and \\(Z\\) as trainable parameters with `requires_grad=True`. During the backward pass, gradients flow not only through the STE to the weights, but also to the scale and zero-point themselves. The optimizer adjusts the grid boundaries to minimize the loss — the grid adapts to the weights at the same time the weights adapt to the grid.
 
-| Aspect | Standard (observer-derived $S$, $Z$) | Learnable ($S$, $Z$ as parameters) |
+| Aspect | Standard (observer-derived \\(S\\), \\(Z\\)) | Learnable (\\(S\\), \\(Z\\) as parameters) |
 |---|---|---|
 | Scale/zero-point source | Computed from running statistics | Learned via gradient descent |
 | What gradients update | Weights only (via STE) | Weights *and* quantization parameters |
 | Grid placement | Fixed by data statistics | Optimized for task loss |
-| Stability | High — observer statistics are smooth | Requires careful learning-rate tuning for $S$, $Z$ |
+| Stability | High — observer statistics are smooth | Requires careful learning-rate tuning for \\(S\\), \\(Z\\) |
 | Best for | int8 QAT (grid is fine enough) | int4 / int2 QAT (grid placement is critical) |
 
 **When to use which.** Standard observer-derived QAT is the default for int8 — it is stable, well-supported, and sufficient. Learnable quantization parameters become valuable when pushing below 8 bits: if standard QAT at int4 still leaves an accuracy gap, making scale and zero-point learnable is the next lever before giving up on that bit width.
@@ -154,25 +154,25 @@ The effect is visible if you compare histograms of weight values before and afte
 
 To see concretely what "learning the grid" means, trace one weight through both strategies.
 
-**Setup.** A layer's per-channel weight scale is $S_w = 0.015$ (symmetric int8, grid points at multiples of 0.015). One weight has the float32 value $w = 0.052$.
+**Setup.** A layer's per-channel weight scale is \\(S_w = 0.015\\) (symmetric int8, grid points at multiples of 0.015). One weight has the float32 value \\(w = 0.052\\).
 
 **PTQ (passive).** The weight is rounded to the nearest grid point:
 
 $$q = \text{round}\!\left(\frac{0.052}{0.015}\right) = \text{round}(3.467) = 3 \qquad w_{\text{PTQ}}' = 3 \times 0.015 = 0.045$$
 
-PTQ error: $|0.052 - 0.045| = 0.007$. That is $47\%$ of a step size — nearly worst-case rounding.
+PTQ error: \\(|0.052 - 0.045| = 0.007\\). That is \\(47\%\\) of a step size — nearly worst-case rounding.
 
-**QAT (active).** During QAT fine-tuning, the optimizer sees (via the STE) that this weight is stuck between grid points 3 and 4. Over several training steps, the gradient nudges the weight toward the grid point that produces lower task loss. Suppose the optimizer shifts it to $w = 0.046$:
+**QAT (active).** During QAT fine-tuning, the optimizer sees (via the STE) that this weight is stuck between grid points 3 and 4. Over several training steps, the gradient nudges the weight toward the grid point that produces lower task loss. Suppose the optimizer shifts it to \\(w = 0.046\\):
 
 $$q = \text{round}\!\left(\frac{0.046}{0.015}\right) = \text{round}(3.067) = 3 \qquad w_{\text{QAT}}' = 3 \times 0.015 = 0.045$$
 
-QAT error: $|0.046 - 0.045| = 0.001$. Same integer code (3), but the float weight moved closer to the grid point.
+QAT error: \\(|0.046 - 0.045| = 0.001\\). Same integer code (3), but the float weight moved closer to the grid point.
 
-Alternatively, if grid point 4 ($= 0.060$) produces better task loss, the optimizer might push the weight to $w = 0.059$:
+Alternatively, if grid point 4 (\\(= 0.060\\)) produces better task loss, the optimizer might push the weight to \\(w = 0.059\\):
 
 $$q = \text{round}\!\left(\frac{0.059}{0.015}\right) = \text{round}(3.933) = 4 \qquad w_{\text{QAT}}' = 4 \times 0.015 = 0.060$$
 
-QAT error: $|0.059 - 0.060| = 0.001$. The weight jumped to a different code, but with minimal quantization error.
+QAT error: \\(|0.059 - 0.060| = 0.001\\). The weight jumped to a different code, but with minimal quantization error.
 
 **The point.** PTQ accepts the weight at 0.052 and eats the 0.007 error. QAT adjusts the weight during training so that whichever grid point it lands on, the error is small *and* the task loss is low. Multiplied across millions of weights, this is why QAT recovers accuracy that PTQ cannot.
 
@@ -203,33 +203,33 @@ QAT is a last resort for models where PTQ's structural ceiling has been reached.
 
 To see the full QAT process, trace it through a minimal network: two linear layers with ReLU, processing a single input.
 
-**Setup:** Input $x = [1.0, -0.5]$. Layer 1 weights: $W_1 = \begin{bmatrix} 0.72 & -0.41 \\ 0.33 & 0.89 \end{bmatrix}$, bias $b_1 = [0.1, -0.2]$. Layer 2 weights: $W_2 = \begin{bmatrix} 0.55 & -0.28 \end{bmatrix}$, bias $b_2 = [0.05]$. Scale $S = 0.01$ for all quantization points (simplified for clarity). Target output: $y_{\text{target}} = 0.6$.
+**Setup:** Input \\(x = [1.0, -0.5]\\). Layer 1 weights: \\(W_1 = \begin{bmatrix} 0.72 & -0.41 \\ 0.33 & 0.89 \end{bmatrix}\\), bias \\(b_1 = [0.1, -0.2]\\). Layer 2 weights: \\(W_2 = \begin{bmatrix} 0.55 & -0.28 \end{bmatrix}\\), bias \\(b_2 = [0.05]\\). Scale \\(S = 0.01\\) for all quantization points (simplified for clarity). Target output: \\(y_{\text{target}} = 0.6\\).
 
 **Step 1: Floating-point forward pass (no quantization).**
 
-Layer 1 output: $h = W_1 x + b_1 = [0.72(1.0) + (-0.41)(-0.5) + 0.1,\; 0.33(1.0) + 0.89(-0.5) + (-0.2)] = [1.025, -0.315]$
+Layer 1 output: \\(h = W_1 x + b_1 = [0.72(1.0) + (-0.41)(-0.5) + 0.1,\; 0.33(1.0) + 0.89(-0.5) + (-0.2)] = [1.025, -0.315]\\)
 
-After ReLU: $[1.025, 0.0]$
+After ReLU: \\([1.025, 0.0]\\)
 
-Layer 2 output: $y = 0.55(1.025) + (-0.28)(0.0) + 0.05 = 0.614$
+Layer 2 output: \\(y = 0.55(1.025) + (-0.28)(0.0) + 0.05 = 0.614\\)
 
-Loss (MSE): $(0.614 - 0.6)^2 = 0.000196$
+Loss (MSE): \\((0.614 - 0.6)^2 = 0.000196\\)
 
 **Step 2: QAT forward pass (with fake quantization).**
 
-Each weight is fake-quantized: $\hat{w} = S \cdot \text{round}(w / S)$.
+Each weight is fake-quantized: \\(\hat{w} = S \cdot \text{round}(w / S)\\).
 
-$\hat{W}_1 = \begin{bmatrix} 0.72 & -0.41 \\ 0.33 & 0.89 \end{bmatrix}$ (these happen to be on grid points with $S = 0.01$)
+\\(\hat{W}_1 = \begin{bmatrix} 0.72 & -0.41 \\ 0.33 & 0.89 \end{bmatrix}\\) (these happen to be on grid points with \\(S = 0.01\\))
 
-Layer 1 output before ReLU: $[1.025, -0.315]$. After fake quantization of activations: $[1.03, -0.32]$ (rounded to nearest 0.01). After ReLU: $[1.03, 0.0]$.
+Layer 1 output before ReLU: \\([1.025, -0.315]\\). After fake quantization of activations: \\([1.03, -0.32]\\) (rounded to nearest 0.01). After ReLU: \\([1.03, 0.0]\\).
 
-Layer 2 with fake-quantized weights: $y = 0.55(1.03) + (-0.28)(0.0) + 0.05 = 0.6165$. Fake-quantized output: $0.62$.
+Layer 2 with fake-quantized weights: \\(y = 0.55(1.03) + (-0.28)(0.0) + 0.05 = 0.6165\\). Fake-quantized output: \\(0.62\\).
 
-QAT loss: $(0.62 - 0.6)^2 = 0.0004$ — higher than float loss because quantization introduced error.
+QAT loss: \\((0.62 - 0.6)^2 = 0.0004\\) — higher than float loss because quantization introduced error.
 
 **Step 3: Backward pass with STE.**
 
-The gradient $\partial L / \partial y = 2(0.62 - 0.6) = 0.04$ flows backward. At each fake quantization node, STE passes the gradient through as-is. The optimizer updates all weights to reduce this quantization-affected loss.
+The gradient \\(\partial L / \partial y = 2(0.62 - 0.6) = 0.04\\) flows backward. At each fake quantization node, STE passes the gradient through as-is. The optimizer updates all weights to reduce this quantization-affected loss.
 
 **Step 4: After many iterations.**
 

@@ -42,7 +42,7 @@ For comparison, if the outlier channels did not exist:
 
 $$S = \frac{2 \times 2.0}{255} = \frac{4.0}{255} \approx 0.0157$$
 
-The normal channels would get approximately $4.0 / 0.0157 \approx 255$ levels — the full resolution of int8. The outlier channels, which represent less than 0.4% of the channels, are costing the other 99.6% a 30× reduction in resolution.
+The normal channels would get approximately \\(4.0 / 0.0157 \approx 255\\) levels — the full resolution of int8. The outlier channels, which represent less than 0.4% of the channels, are costing the other 99.6% a 30× reduction in resolution.
 
 This is the outlier explosion pattern from Chapter 13, but at a scale and consistency that makes it the dominant failure mode rather than an occasional problem.
 
@@ -76,7 +76,7 @@ A uniform quantization grid distributes grid points evenly across the range. For
 
 $$[0.001, 0.002, 0.005, 0.012, 0.03, 0.15, 0.35, 0.45]$$
 
-These sum to 1.0. Under int8 quantization over [0, 1] with $S = 1.0/255 \approx 0.00392$:
+These sum to 1.0. Under int8 quantization over [0, 1] with \\(S = 1.0/255 \approx 0.00392\\):
 
 | Region | Value count | Int8 codes allocated | Utilization |
 |---|---|---|---|
@@ -103,7 +103,7 @@ These are not edge cases. In sufficiently large transformers (multi-billion para
 - The max/normal ratio can grow dramatically — exceeding 100:1 in the largest models
 - Softmax distributions are spiky in every attention head
 
-**Concrete example at 100:1 ratio.** In a 70B model, a linear layer with 512 channels: channels 1–510 peak at 1.8–2.1, channels 511–512 peak at 180 and 210. Per-tensor scale: $S = (210 - (-210)) / 255 = 420 / 255 \approx 1.65$. For normal channels with range [-2.1, 2.1]: usable levels $= 4.2 / 1.65 \approx 2.5$ — effectively 2–3 distinct representable values per channel. The model cannot distinguish an activation of 0.5 from 1.5 in those channels. With 510 out of 512 channels at 2–3 levels, the layer’s output is essentially random for normal-magnitude channels. This is not “slightly degraded” — it is complete representational collapse.
+**Concrete example at 100:1 ratio.** In a 70B model, a linear layer with 512 channels: channels 1–510 peak at 1.8–2.1, channels 511–512 peak at 180 and 210. Per-tensor scale: \\(S = (210 - (-210)) / 255 = 420 / 255 \approx 1.65\\). For normal channels with range [-2.1, 2.1]: usable levels \\(= 4.2 / 1.65 \approx 2.5\\) — effectively 2–3 distinct representable values per channel. The model cannot distinguish an activation of 0.5 from 1.5 in those channels. With 510 out of 512 channels at 2–3 levels, the layer’s output is essentially random for normal-magnitude channels. This is not “slightly degraded” — it is complete representational collapse.
 
 Standard int8 PTQ on these models can cause severe quality collapse (task- and metric-dependent), often far beyond the small degradations seen in CNNs. The model's outputs become incoherent. QAT (Chapter 11) can help, but full-model fine-tuning at tens of billions of parameters is operationally expensive; many deployments therefore prefer distribution-shaping or selective precision strategies.
 

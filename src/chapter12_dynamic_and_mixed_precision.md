@@ -47,9 +47,9 @@ Dynamic quantization is most useful when:
 
 **Concrete example — memory-bound vs. compute-bound.** A 70B model with int8 weights (35 GB). At 900 GB/s bandwidth:
 
-- *Batch 1 decode (memory-bound):* weight load = $35 / 900 = 38.9$ ms. Compute for 1 token: ~70 billion MACs at ~500 TOPS = 0.14 ms. The GPU is idle 99.6% of the time — pure bandwidth-bound. Weight-only quantization directly improves tokens/second.
-- *Batch 32 prefill:* weight load still 38.9 ms (loaded once, shared). Compute: $32 \times 0.14 = 4.5$ ms. Still bandwidth-bound, but compute is catching up.
-- *Batch 256 prefill:* compute = $256 \times 0.14 = 35.8$ ms — roughly equal to memory load. Beyond this batch size, compute dominates, and weight-only quantization no longer improves throughput. Full int8 quantization (weights *and* activations) cuts compute by ~2× via native int8 matmul.
+- *Batch 1 decode (memory-bound):* weight load = \\(35 / 900 = 38.9\\) ms. Compute for 1 token: ~70 billion MACs at ~500 TOPS = 0.14 ms. The GPU is idle 99.6% of the time — pure bandwidth-bound. Weight-only quantization directly improves tokens/second.
+- *Batch 32 prefill:* weight load still 38.9 ms (loaded once, shared). Compute: \\(32 \times 0.14 = 4.5\\) ms. Still bandwidth-bound, but compute is catching up.
+- *Batch 256 prefill:* compute = \\(256 \times 0.14 = 35.8\\) ms — roughly equal to memory load. Beyond this batch size, compute dominates, and weight-only quantization no longer improves throughput. Full int8 quantization (weights *and* activations) cuts compute by ~2× via native int8 matmul.
 
 Dynamic quantization changes quantization *parameters* per input; it does not necessarily change the graph's operator set or precision assignments at runtime. This distinguishes it from dynamic *precision selection*, which would switch between int8 and fp16 paths based on runtime conditions.
 
@@ -106,9 +106,9 @@ The procedure is mechanical:
 
 1. **Establish a baseline.** Run the full floating-point model on a validation set and record the accuracy metric (top-1 accuracy, perplexity, F1 — whatever the task requires).
 
-2. **Quantize one layer at a time.** For each layer $i$ in the model, quantize only layer $i$ to int8 while keeping all other layers in floating-point. Run the validation set. Record the accuracy drop $\Delta_i$.
+2. **Quantize one layer at a time.** For each layer \\(i\\) in the model, quantize only layer \\(i\\) to int8 while keeping all other layers in floating-point. Run the validation set. Record the accuracy drop \\(\Delta_i\\).
 
-3. **Rank by sensitivity.** Sort layers by $\Delta_i$ descending. Layers with the highest $\Delta_i$ are the most sensitive — they contribute the most error when quantized.
+3. **Rank by sensitivity.** Sort layers by \\(\Delta_i\\) descending. Layers with the highest \\(\Delta_i\\) are the most sensitive — they contribute the most error when quantized.
 
 4. **Set a threshold.** Choose an acceptable per-layer accuracy drop — typically 0.1% for classification tasks, 0.5 perplexity points for language models. Layers above this threshold stay in float16. Layers below are quantized to int8.
 

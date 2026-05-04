@@ -190,9 +190,9 @@
 </ul>
 <p><strong>Concrete example — memory-bound vs. compute-bound.</strong> A 70B model with int8 weights (35 GB). At 900 GB/s bandwidth:</p>
 <ul>
-<li><em>Batch 1 decode (memory-bound):</em> weight load = $35 / 900 = 38.9$ ms. Compute for 1 token: ~70 billion MACs at ~500 TOPS = 0.14 ms. The GPU is idle 99.6% of the time — pure bandwidth-bound. Weight-only quantization directly improves tokens/second.</li>
-<li><em>Batch 32 prefill:</em> weight load still 38.9 ms (loaded once, shared). Compute: $32 \times 0.14 = 4.5$ ms. Still bandwidth-bound, but compute is catching up.</li>
-<li><em>Batch 256 prefill:</em> compute = $256 \times 0.14 = 35.8$ ms — roughly equal to memory load. Beyond this batch size, compute dominates, and weight-only quantization no longer improves throughput. Full int8 quantization (weights <em>and</em> activations) cuts compute by ~2× via native int8 matmul.</li>
+<li><em>Batch 1 decode (memory-bound):</em> weight load = \(35 / 900 = 38.9\) ms. Compute for 1 token: ~70 billion MACs at ~500 TOPS = 0.14 ms. The GPU is idle 99.6% of the time — pure bandwidth-bound. Weight-only quantization directly improves tokens/second.</li>
+<li><em>Batch 32 prefill:</em> weight load still 38.9 ms (loaded once, shared). Compute: \(32 \times 0.14 = 4.5\) ms. Still bandwidth-bound, but compute is catching up.</li>
+<li><em>Batch 256 prefill:</em> compute = \(256 \times 0.14 = 35.8\) ms — roughly equal to memory load. Beyond this batch size, compute dominates, and weight-only quantization no longer improves throughput. Full int8 quantization (weights <em>and</em> activations) cuts compute by ~2× via native int8 matmul.</li>
 </ul>
 <p>Dynamic quantization changes quantization <em>parameters</em> per input; it does not necessarily change the graph's operator set or precision assignments at runtime. This distinguishes it from dynamic <em>precision selection</em>, which would switch between int8 and fp16 paths based on runtime conditions.</p>
 <p><strong>Why weight quantization is the primary goal in LLMs.</strong> During autoregressive LLM generation (producing one token at a time), the activation tensor at each layer is shaped [1, hidden_dim] — one row per layer, a few kilobytes. Even in float16, the cost to load activations per inference is tiny. The weights, however, are the same 35–40 GB every token. Reducing weight size directly reduces the memory bandwidth cost per token.</p>
@@ -240,10 +240,10 @@
 <p><strong>Establish a baseline.</strong> Run the full floating-point model on a validation set and record the accuracy metric (top-1 accuracy, perplexity, F1 — whatever the task requires).</p>
 </li>
 <li>
-<p><strong>Quantize one layer at a time.</strong> For each layer $i$ in the model, quantize only layer $i$ to int8 while keeping all other layers in floating-point. Run the validation set. Record the accuracy drop $\Delta_i$.</p>
+<p><strong>Quantize one layer at a time.</strong> For each layer \(i\) in the model, quantize only layer \(i\) to int8 while keeping all other layers in floating-point. Run the validation set. Record the accuracy drop \(\Delta_i\).</p>
 </li>
 <li>
-<p><strong>Rank by sensitivity.</strong> Sort layers by $\Delta_i$ descending. Layers with the highest $\Delta_i$ are the most sensitive — they contribute the most error when quantized.</p>
+<p><strong>Rank by sensitivity.</strong> Sort layers by \(\Delta_i\) descending. Layers with the highest \(\Delta_i\) are the most sensitive — they contribute the most error when quantized.</p>
 </li>
 <li>
 <p><strong>Set a threshold.</strong> Choose an acceptable per-layer accuracy drop — typically 0.1% for classification tasks, 0.5 perplexity points for language models. Layers above this threshold stay in float16. Layers below are quantized to int8.</p>

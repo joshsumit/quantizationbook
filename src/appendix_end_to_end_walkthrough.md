@@ -17,10 +17,10 @@ A 3-layer feedforward classifier:
 - **Layer 2:** Linear(8 → 8) + ReLU
 - **Layer 3:** Linear(8 → 2) (output logits)
 
-Total parameters: $(4 \times 8 + 8) + (8 \times 8 + 8) + (8 \times 2 + 2) = 40 + 72 + 18 = 130$ weights and biases.
+Total parameters: \\((4 \times 8 + 8) + (8 \times 8 + 8) + (8 \times 2 + 2) = 40 + 72 + 18 = 130\\) weights and biases.
 
-Float32 model size: $130 \times 4 = 520$ bytes.
-Int8 model size (weights only): $130 \times 1 + \text{scales} \approx 140$ bytes.
+Float32 model size: \\(130 \times 4 = 520\\) bytes.
+Int8 model size (weights only): \\(130 \times 1 + \text{scales} \approx 140\\) bytes.
 
 (We ignore scale/zero-point metadata and packing overhead for simplicity. In this toy model, metadata is a handful of bytes; in real models it is a small fraction of weight data — see Chapter 16.)
 
@@ -54,21 +54,21 @@ Using asymmetric uint8 quantization for activations (post-ReLU values are non-ne
 
 **Activation scales:**
 
-| Boundary | $S_{\text{act}}$ | $Z_{\text{act}}$ |
+| Boundary | \\(S_{\text{act}}\\) | \\(Z_{\text{act}}\\) |
 |---|---|---|
-| B1 | $3.42 / 255 = 0.01341$ | 0 (min is 0.0) |
-| B2 | $5.17 / 255 = 0.02027$ | 0 |
-| B3 | $7.44 / 255 = 0.02918$ | $\text{round}(2.83 / 0.02918) = 97$ |
+| B1 | \\(3.42 / 255 = 0.01341\\) | 0 (min is 0.0) |
+| B2 | \\(5.17 / 255 = 0.02027\\) | 0 |
+| B3 | \\(7.44 / 255 = 0.02918\\) | \\(\text{round}(2.83 / 0.02918) = 97\\) |
 
-**Weight scales (symmetric, $Z = 0$):**
+**Weight scales (symmetric, \\(Z = 0\\)):**
 
-| Layer | $S_w$ | $S_{\text{acc}} = S_w \times S_{\text{input}}$ |
+| Layer | \\(S_w\\) | \\(S_{\text{acc}} = S_w \times S_{\text{input}}\\) |
 |---|---|---|
-| W1 | $0.71 / 127 = 0.005591$ | $0.005591 \times 0.01 = 0.00005591$ (input scale assumed 0.01) |
-| W2 | $0.53 / 127 = 0.004173$ | $0.004173 \times 0.01341 = 0.00005598$ |
-| W3 | $0.81 / 127 = 0.006378$ | $0.006378 \times 0.02027 = 0.0001293$ |
+| W1 | \\(0.71 / 127 = 0.005591\\) | \\(0.005591 \times 0.01 = 0.00005591\\) (input scale assumed 0.01) |
+| W2 | \\(0.53 / 127 = 0.004173\\) | \\(0.004173 \times 0.01341 = 0.00005598\\) |
+| W3 | \\(0.81 / 127 = 0.006378\\) | \\(0.006378 \times 0.02027 = 0.0001293\\) |
 
-*Output artifact: quantization parameter table $(S, Z)$ for every activation boundary and weight layer.*
+*Output artifact: quantization parameter table \\((S, Z)\\) for every activation boundary and weight layer.*
 
 ---
 
@@ -91,28 +91,28 @@ Each boundary introduces rounding error (round-to-nearest throughout). With Conv
 
 ## Step 4: Predict Error
 
-Using the noise model from Chapter 5 ($\text{Var}(\epsilon) = S^2/12$):
+Using the noise model from Chapter 5 (\\(\text{Var}(\epsilon) = S^2/12\\)):
 
 **Per-boundary rounding noise variance:**
 
-| Boundary | Scale $S$ | $\text{Var}(\epsilon)$ | $\sigma$ |
+| Boundary | Scale \\(S\\) | \\(\text{Var}(\epsilon)\\) | \\(\sigma\\) |
 |---|---|---|---|
-| B0 (input) | assume 0.01 | $8.33 \times 10^{-6}$ | 0.0029 |
-| B1 | 0.01341 | $1.50 \times 10^{-5}$ | 0.0039 |
-| B2 | 0.02027 | $3.42 \times 10^{-5}$ | 0.0059 |
-| B3 | 0.02918 | $7.10 \times 10^{-5}$ | 0.0084 |
+| B0 (input) | assume 0.01 | \\(8.33 \times 10^{-6}\\) | 0.0029 |
+| B1 | 0.01341 | \\(1.50 \times 10^{-5}\\) | 0.0039 |
+| B2 | 0.02027 | \\(3.42 \times 10^{-5}\\) | 0.0059 |
+| B3 | 0.02918 | \\(7.10 \times 10^{-5}\\) | 0.0084 |
 
 **Layer 2 output noise estimate:**
 
-Layer 2 has a dot product of width $N = 8$. The output noise from weight quantization alone:
+Layer 2 has a dot product of width \\(N = 8\\). The output noise from weight quantization alone:
 
 $$\text{Var}(\epsilon_{\text{L2}}) \approx N \times \frac{S_w^2}{12} \times \mathbb{E}[x^2]$$
 
-With $S_w = 0.004173$, $N = 8$, and $\mathbb{E}[x^2] \approx 1.0$ (typical for post-ReLU activations in this range):
+With \\(S_w = 0.004173\\), \\(N = 8\\), and \\(\mathbb{E}[x^2] \approx 1.0\\) (typical for post-ReLU activations in this range):
 
 $$\text{Var}(\epsilon_{\text{L2}}) \approx 8 \times \frac{0.004173^2}{12} \times 1.0 = 8 \times 1.45 \times 10^{-6} = 1.16 \times 10^{-5}$$
 
-This noise then passes through Boundary 2's requantization, adding its own $\text{Var} = 3.42 \times 10^{-5}$.
+This noise then passes through Boundary 2's requantization, adding its own \\(\text{Var} = 3.42 \times 10^{-5}\\).
 
 **Cumulative noise at the output (rough estimate):**
 
@@ -124,7 +124,7 @@ $$\sigma_{\text{total}} \approx 0.0114$$
 
 For output logits with a typical range of [-2.83, 4.61] (7.44 units), a noise standard deviation of 0.011 is roughly 0.15% of the range. This is small — a classification task should tolerate this level of noise without significant accuracy loss.
 
-*Output artifact: variance ledger per boundary + cumulative $\sigma_{\text{total}}$.*
+*Output artifact: variance ledger per boundary + cumulative \\(\sigma_{\text{total}}\\).*
 
 ---
 
@@ -134,7 +134,7 @@ Run the same 64 calibration inputs through both the float32 and int8 models. Mea
 
 | Metric | Predicted | Observed (typical) |
 |---|---|---|
-| Output noise $\sigma$ | 0.011 | 0.008 – 0.015 |
+| Output noise \\(\sigma\\) | 0.011 | 0.008 – 0.015 |
 | Max output deviation | ~3σ ≈ 0.034 | 0.02 – 0.04 |
 | Classification accuracy drop | < 0.5% | 0.1 – 0.3% |
 
@@ -145,9 +145,9 @@ The prediction and observation are consistent. The noise model provides the righ
 - ReLU clips negative noise, which can slightly reduce noise variance after activation.
 
 **Sanity checks:**
-- All zero-points are within [0, 255]: $z_{B1}=0$, $z_{B2}=0$, $z_{B3}=97$. ✓
+- All zero-points are within [0, 255]: \\(z_{B1}=0\\), \\(z_{B2}=0\\), \\(z_{B3}=97\\). ✓
 - Clamp rate during calibration is ~0% (no values outside observed range by definition). ✓
-- Predicted $\sigma$ (0.011) roughly matches observed range (0.008–0.015). ✓
+- Predicted \\(\sigma\\) (0.011) roughly matches observed range (0.008–0.015). ✓
 
 *Output artifact: measured diff table + sanity check confirmation.*
 
@@ -159,13 +159,13 @@ Suppose this model had an outlier problem. If Layer 1's activations had a single
 
 $$S_{\text{B1}} = 50.0 / 255 = 0.196$$
 
-The noise variance at B1 jumps to $0.196^2 / 12 = 0.0032$ — a 213× increase. The output noise $\sigma$ would rise from 0.011 to approximately 0.057, and the classification accuracy drop would be 3–5%.
+The noise variance at B1 jumps to \\(0.196^2 / 12 = 0.0032\\) — a 213× increase. The output noise \\(\sigma\\) would rise from 0.011 to approximately 0.057, and the classification accuracy drop would be 3–5%.
 
 **Diagnosis using Chapter 13's order:**
 1. Graph boundaries: 4, as expected. ✓
 2. Silent fallbacks: none (all ops are linear + ReLU). ✓
 3. Scale alignment: no elementwise ops, no mismatch. ✓
-4. Calibration: check the 99th-percentile-to-max ratio. Here: $3.1 / 50.0 = 0.062$. Ratio is 16:1 — well above the 10:1 outlier explosion threshold. **Diagnosis: Outlier Explosion (Pattern 1).**
+4. Calibration: check the 99th-percentile-to-max ratio. Here: \\(3.1 / 50.0 = 0.062\\). Ratio is 16:1 — well above the 10:1 outlier explosion threshold. **Diagnosis: Outlier Explosion (Pattern 1).**
 5. Fix: switch to percentile observer. Set range to [-0.0, 3.1]. The outlier clips, but 99.99% of values get full resolution.
 
 *Canonical category: Distribution Mismatch / Budget Waste, manifesting as Outlier Explosion (Pattern 1, Chapter 13).*
@@ -181,9 +181,9 @@ This walkthrough composed every major concept:
 | Step | Concept | Chapter |
 |---|---|---|
 | Calibrate | Observers collect activation ranges | 9 |
-| Compute scales | $S = \text{range} / (q_{\max} - q_{\min})$ | 3 |
+| Compute scales | \\(S = \text{range} / (q_{\max} - q_{\min})\\) | 3 |
 | Count boundaries | int32 → int8 at each layer output | 6, 7 |
-| Predict error | $\text{Var}(\epsilon) = S^2/12$, accumulates across boundaries | 5, 7 |
+| Predict error | \\(\text{Var}(\epsilon) = S^2/12\\), accumulates across boundaries | 5, 7 |
 | Diagnose failure | Check graph → fallbacks → alignment → calibration → sensitivity | 13 |
 | Fix | Percentile observer, SmoothQuant, mixed precision, or don't quantize | 9, 15, 12, 13 |
 

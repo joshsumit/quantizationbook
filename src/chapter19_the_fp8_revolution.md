@@ -120,19 +120,19 @@ The building analogy: more floors = wider range. More rooms per floor = finer pr
 Take the value 0.352 and quantize it in both formats.
 
 **FP8 E4M3** (4 exponent bits, 3 mantissa bits):
-1. The value 0.352 falls in the zone [0.25, 0.5] (exponent = $2^{-2}$ to $2^{-1}$).
+1. The value 0.352 falls in the zone [0.25, 0.5] (exponent = \\(2^{-2}\\) to \\(2^{-1}\\)).
 2. The 3-bit mantissa provides 8 evenly spaced positions within this zone: 0.25, 0.2812, 0.3125, 0.3438, 0.375, 0.4062, 0.4375, 0.4688.
-3. Nearest representable value: **0.3438**. Error: $|0.352 - 0.3438| = 0.0082$.
+3. Nearest representable value: **0.3438**. Error: \\(|0.352 - 0.3438| = 0.0082\\).
 
-**Int8** with a narrow range [-1, 1] (no outliers): step size $= 2/255 \approx 0.00784$. Nearest value to 0.352: ~0.3490. Error: ~0.003.
+**Int8** with a narrow range [-1, 1] (no outliers): step size \\(= 2/255 \approx 0.00784\\). Nearest value to 0.352: ~0.3490. Error: ~0.003.
 
-**Int8** with an outlier-forced range [-1, 60]: step size $\approx 0.238$. Nearest value to 0.352: 0.238 or 0.476. Error: ~0.114.
+**Int8** with an outlier-forced range [-1, 60]: step size \\(\approx 0.238\\). Nearest value to 0.352: 0.238 or 0.476. Error: ~0.114.
 
 For the narrow range, int8 wins slightly — its uniform step is fine enough. But the moment an outlier forces the range wider, int8's error for 0.352 jumps to 0.114 while FP8 stays at 0.0082. FP8's precision for small values does not degrade when large values exist in the same tensor. *This is why FP8 matters for transformers.*
 
 ### Where Did the Other 16 Values Go?
 
-An 8-bit field can represent $2^8 = 256$ distinct bit patterns. But the FP8 comparison table lists only 240 representable values — fewer than int8's 256. The remaining 16 bit patterns are reserved for *special values* — representations of NaN (Not a Number) and, in some variants, infinity. This means FP8 does not have more values than int8; it has *differently distributed* values. The advantage is not more values — it is smarter placement. Different FP8 variants (OCP FP8 vs FNUZ) handle the specifics differently, but the practical effect is the same: ~240 usable values for actual numbers.
+An 8-bit field can represent \\(2^8 = 256\\) distinct bit patterns. But the FP8 comparison table lists only 240 representable values — fewer than int8's 256. The remaining 16 bit patterns are reserved for *special values* — representations of NaN (Not a Number) and, in some variants, infinity. This means FP8 does not have more values than int8; it has *differently distributed* values. The advantage is not more values — it is smarter placement. Different FP8 variants (OCP FP8 vs FNUZ) handle the specifics differently, but the practical effect is the same: ~240 usable values for actual numbers.
 
 ---
 
@@ -167,9 +167,9 @@ With the sign/exponent/mantissa mechanics established, the two industry-standard
 4 exponent bits, 3 mantissa bits.
 
 - **Dynamic range:** ~±448 (much wider than int8's ±127).
-- **Precision near zero:** finest step $\approx 2^{-9} \approx 0.00195$.
+- **Precision near zero:** finest step \\(\approx 2^{-9} \approx 0.00195\\).
 - **Precision near 1.0:** step size ~0.0625.
-- **Values per exponent zone:** $2^3 = 8$ distinct positions.
+- **Values per exponent zone:** \\(2^3 = 8\\) distinct positions.
 - **Use case:** Weights and activations during inference. The 3-bit mantissa gives enough precision per zone for forward-pass computations.
 
 ### E5M2 — More Range, Less Precision
@@ -177,9 +177,9 @@ With the sign/exponent/mantissa mechanics established, the two industry-standard
 5 exponent bits, 2 mantissa bits.
 
 - **Dynamic range:** ~±57,344 (extremely wide).
-- **Precision near zero:** finest step $\approx 2^{-16} \approx 0.0000153$.
+- **Precision near zero:** finest step \\(\approx 2^{-16} \approx 0.0000153\\).
 - **Precision near 1.0:** step size ~0.25 (coarser than E4M3).
-- **Values per exponent zone:** $2^2 = 4$ distinct positions.
+- **Values per exponent zone:** \\(2^2 = 4\\) distinct positions.
 - **Use case:** Gradients during training (explained in the training section below).
 
 ### Why Two Formats?
@@ -187,17 +187,17 @@ With the sign/exponent/mantissa mechanics established, the two industry-standard
 The split is driven by what each tensor needs most:
 
 - **Weights and activations** need precision — distinguishing 0.35 from 0.40 matters for model accuracy. Range beyond ±448 is rarely needed. → E4M3.
-- **Gradients** need range — gradient magnitudes routinely span 6+ orders of magnitude, from $10^{-7}$ to $10^{1}$. Whether a gradient is 0.00312 or 0.00375 matters less than whether it is representable at all. → E5M2.
+- **Gradients** need range — gradient magnitudes routinely span 6+ orders of magnitude, from \\(10^{-7}\\) to \\(10^{1}\\). Whether a gradient is 0.00312 or 0.00375 matters less than whether it is representable at all. → E5M2.
 
 **Worked example: why E5M2 is necessary for gradients.** Consider gradient magnitudes across one layer during training:
 
 $$[0.0000003,\; 0.00001,\; 0.0015,\; 0.025,\; 0.8,\; 12,\; 450,\; 6000]$$
 
-Smallest: $3 \times 10^{-7}$. Largest: $6 \times 10^{3}$. Ratio: $2 \times 10^{10}:1$.
+Smallest: \\(3 \times 10^{-7}\\). Largest: \\(6 \times 10^{3}\\). Ratio: \\(2 \times 10^{10}:1\\).
 
-- Int8 (range ±127): smallest representable nonzero = $S$ (one step). To cover 6000: $S = 6000/127 \approx 47.2$. The value 0.0000003 rounds to 0. In fact, anything below 47.2 rounds to 0 or ±47.2. Seven of the eight gradients are lost.
-- E4M3 (range ±448): max is 448, cannot even represent 6000 without an enormous per-tensor scale. Even with scaling, min representable nonzero $\approx 2^{-9} = 0.00195$ — the gradient $3 \times 10^{-7}$ underflows to zero. Four of eight gradients are unrepresentable.
-- E5M2 (range ±57,344): easily covers 6000. Min representable nonzero $\approx 2^{-16} \approx 1.5 \times 10^{-5}$. The gradient $3 \times 10^{-7}$ still underflows — but with loss scaling (multiply loss by $10^4$), it becomes $3 \times 10^{-3}$, well within range. Six of eight gradients are representable without scaling; all eight with loss scaling.
+- Int8 (range ±127): smallest representable nonzero = \\(S\\) (one step). To cover 6000: \\(S = 6000/127 \approx 47.2\\). The value 0.0000003 rounds to 0. In fact, anything below 47.2 rounds to 0 or ±47.2. Seven of the eight gradients are lost.
+- E4M3 (range ±448): max is 448, cannot even represent 6000 without an enormous per-tensor scale. Even with scaling, min representable nonzero \\(\approx 2^{-9} = 0.00195\\) — the gradient \\(3 \times 10^{-7}\\) underflows to zero. Four of eight gradients are unrepresentable.
+- E5M2 (range ±57,344): easily covers 6000. Min representable nonzero \\(\approx 2^{-16} \approx 1.5 \times 10^{-5}\\). The gradient \\(3 \times 10^{-7}\\) still underflows — but with loss scaling (multiply loss by \\(10^4\\)), it becomes \\(3 \times 10^{-3}\\), well within range. Six of eight gradients are representable without scaling; all eight with loss scaling.
 
 This is why E5M2 is mandatory for gradient storage and E4M3 is insufficient.
 
@@ -221,7 +221,7 @@ The outlier example at the start of this chapter showed the result. This section
 
 ### The Mechanism: Per-Value Adaptation
 
-Under int8, a single scale $S$ governs the entire tensor. Every value — small or large — gets the same step size. If the tensor contains one value at 60.0 and thousands near 0.1, the step size is set by 60.0, and the values near 0.1 are crushed.
+Under int8, a single scale \\(S\\) governs the entire tensor. Every value — small or large — gets the same step size. If the tensor contains one value at 60.0 and thousands near 0.1, the step size is set by 60.0, and the values near 0.1 are crushed.
 
 Under FP8, each value effectively gets its own step size through the exponent. A value near 0.1 lives in a low-exponent zone with a step of ~0.0078. A value near 60.0 lives in a high-exponent zone with a step of ~4.0. There is no single scale that must accommodate both — the format's structure handles the range variation internally.
 
@@ -229,7 +229,7 @@ The outlier at 60.0 is represented at coarse resolution, but it is represented �
 
 ### FP8 Does Not Remove Scaling
 
-FP8 is smarter than int8, but it is not magic. It still needs a scaling factor — the $S$ from Chapter 3 — to position data within the representable range.
+FP8 is smarter than int8, but it is not magic. It still needs a scaling factor — the \\(S\\) from Chapter 3 — to position data within the representable range.
 
 Think of it as a telescope. FP8 has better lenses than int8 (non-uniform resolution that matches real data distributions). But you still have to point the telescope at the right part of the sky. If your data lives in [0, 1] but the FP8 range covers [0, 448], most of the representable values are allocated to zones the data never visits. A scaling factor shifts the data into the FP8 "sweet spot."
 

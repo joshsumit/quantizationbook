@@ -588,7 +588,7 @@ Just as Chapter 20 maps Snapdragon generations to capabilities, here is the NVID
 
 Starting with Turing, NVIDIA Tensor Cores can perform INT8 matrix multiplication with INT32 accumulation:
 
-$$C_{int32} = A_{int8} \times B_{int8} + C_{int32}$$
+\\(C_{int32} = A_{int8} \times B_{int8} + C_{int32}\\)
 
 This is the same pattern as Qualcomm's HTP — multiply in low precision, accumulate in high precision to avoid overflow.
 
@@ -774,10 +774,10 @@ TensorRT provides three calibration algorithms:
 
 **How it works:** For each activation tensor, TensorRT:
 1. Records the histogram of values during calibration
-2. For each candidate clipping threshold $T$, computes the KL divergence between the original FP32 distribution and the quantized INT8 distribution
-3. Selects the threshold $T$ that minimizes KL divergence
+2. For each candidate clipping threshold \\(T\\), computes the KL divergence between the original FP32 distribution and the quantized INT8 distribution
+3. Selects the threshold \\(T\\) that minimizes KL divergence
 
-$$T^* = \arg\min_T D_{KL}(P_{fp32} \| Q_{int8}(T))$$
+\\(T^* = \arg\min_T D_{KL}(P_{fp32} \| Q_{int8}(T))\\)
 
 **Why KL divergence?** KL divergence measures how much information is lost when approximating the FP32 distribution with the INT8 distribution. Minimizing it means the quantized distribution is as close as possible to the original, in an information-theoretic sense.
 
@@ -791,7 +791,7 @@ This is the **default** calibration method in TensorRT and works well for most C
 
 **How it works:** Simply uses the minimum and maximum observed values as the quantization range:
 
-$$S = \frac{\max(|x_{observed}|)}{127}$$
+\\(S = \frac{\max(|x_{observed}|)}{127}\\)
 
 **When to use:** When outlier preservation is critical — e.g., when even the maximum activation value carries important information. This is conservative but wastes resolution if outliers are rare.
 
@@ -801,7 +801,7 @@ $$S = \frac{\max(|x_{observed}|)}{127}$$
 
 **How it works:** Uses the 99.99th percentile (or another configurable percentile) of the observed values instead of the true maximum:
 
-$$S = \frac{\text{percentile}(|x|, 99.99)}{127}$$
+\\(S = \frac{\text{percentile}(|x|, 99.99)}{127}\\)
 
 **When to use:** When there are extreme outliers that should be clipped, but you want more control than entropy calibration provides.
 
@@ -1258,7 +1258,7 @@ Standard TensorRT was designed for CNN-style models: fixed input/output shapes, 
 
 LLMs have properties that break the standard TensorRT workflow:
 
-1. **Autoregressive generation** — the model runs token-by-token, with each forward pass producing one token. The output of step $t$ is the input to step $t+1$. Standard TensorRT expects a single forward pass with fixed shapes.
+1. **Autoregressive generation** — the model runs token-by-token, with each forward pass producing one token. The output of step \\(t\\) is the input to step \\(t+1\\). Standard TensorRT expects a single forward pass with fixed shapes.
 
 2. **KV cache** — past key-value pairs must be stored and grown across generation steps. This is a large, dynamically growing memory allocation that standard TensorRT does not manage.
 
@@ -1915,7 +1915,7 @@ For INT8:
 
 **IMMA** (Integer Matrix Multiply-Accumulate) is the Tensor Core instruction set for INT8 computation. On Turing and later:
 
-$$C_{m \times n}^{int32} += A_{m \times k}^{int8} \times B_{k \times n}^{int8}$$
+\\(C_{m \times n}^{int32} += A_{m \times k}^{int8} \times B_{k \times n}^{int8}\\)
 
 The Tensor Core processes a 8×8×32 tile in a single cycle:
 - Reads 8×32 = 256 INT8 values from matrix A
@@ -1935,7 +1935,7 @@ TensorRT and cuBLAS handle these alignment requirements automatically, padding w
 
 On Hopper GPUs, cuBLAS provides FP8 GEMM kernels:
 
-$$C_{fp16} = \text{scale}_A \times A_{fp8} \times \text{scale}_B \times B_{fp8}$$
+\\(C_{fp16} = \text{scale}_A \times A_{fp8} \times \text{scale}_B \times B_{fp8}\\)
 
 Each input tensor has a per-tensor scaling factor. The multiplication is performed in FP8 on Tensor Cores, and the result is accumulated in FP32 (inside the Tensor Core), then converted to FP16 or BF16 for output.
 

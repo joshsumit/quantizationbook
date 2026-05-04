@@ -12,9 +12,9 @@ During autoregressive generation, each transformer layer caches the key and valu
 
 ## The Arithmetic of KV-Cache Growth
 
-Before the formula, a brief architecture note: a transformer has $L$ *layers* (large models typically have 80–100), each with an *attention mechanism* that has $H$ *KV-heads* (fewer in models using grouped-query attention), each operating on vectors of dimension $d$ (typically 128). At each generation step, every head in every layer stores one key vector and one value vector for the current token. These accumulate as the sequence grows.
+Before the formula, a brief architecture note: a transformer has \\(L\\) *layers* (large models typically have 80–100), each with an *attention mechanism* that has \\(H\\) *KV-heads* (fewer in models using grouped-query attention), each operating on vectors of dimension \\(d\\) (typically 128). At each generation step, every head in every layer stores one key vector and one value vector for the current token. These accumulate as the sequence grows.
 
-For a transformer with $L$ layers, $H$ KV-heads, and head dimension $d$, the KV-cache stores two tensors (key and value) per layer per head. In float16, the KV-cache size for a sequence of $T$ tokens is:
+For a transformer with \\(L\\) layers, \\(H\\) KV-heads, and head dimension \\(d\\), the KV-cache stores two tensors (key and value) per layer per head. In float16, the KV-cache size for a sequence of \\(T\\) tokens is:
 
 $$\text{KV size} = L \times 2 \times H \times d \times T \times 2 \text{ bytes}$$
 
@@ -80,16 +80,16 @@ KV-cache quantization operates on *dynamic values* that are generated during inf
 
 The simplest approach: quantize each new KV entry independently using per-token statistics. Implementations often compute a lightweight statistic (e.g., absmax) per token per head rather than full min/max over the entire vector, to keep overhead low. Each token's key and value vectors get their own scale.
 
-Overhead: one scale per token per head per layer. For the 80-layer, 8-head model at 32K tokens: $80 \times 2 \times 8 \times 32{,}768 = 41{,}943{,}040$ scales. At 2 bytes each, this is ~80 MiB — modest compared to the KV-cache itself.
+Overhead: one scale per token per head per layer. For the 80-layer, 8-head model at 32K tokens: \\(80 \times 2 \times 8 \times 32{,}768 = 41{,}943{,}040\\) scales. At 2 bytes each, this is ~80 MiB — modest compared to the KV-cache itself.
 
 The problem: per-token quantization captures the range of each individual token but does not capture inter-token relationships. Two tokens with similar scales but different distributions get similar quantization treatment, even if one carries more information.
 
 **Worked example: per-token vs. per-head scaling.** Layer with 128-dim KV heads.
 
-- Token 1: values in [-0.5, 0.8]. Per-token scale $= 1.3 / 255 \approx 0.0051$. All 128 values get the full 256 int8 codes.
-- Token 100: values in [-2.1, 3.2]. Per-token scale $= 5.3 / 255 \approx 0.0208$. Same 256 codes, but each step is 4× wider.
+- Token 1: values in [-0.5, 0.8]. Per-token scale \\(= 1.3 / 255 \approx 0.0051\\). All 128 values get the full 256 int8 codes.
+- Token 100: values in [-2.1, 3.2]. Per-token scale \\(= 5.3 / 255 \approx 0.0208\\). Same 256 codes, but each step is 4× wider.
 
-Under per-head shared scale (covering both tokens): range must span [-2.1, 3.2], so scale $= 5.3 / 255 = 0.0208$. Token 1’s values in [-0.5, 0.8] now get only $1.3 / 0.0208 \approx 63$ usable levels instead of 256 — a 4× loss in resolution. Token 1’s key vector, which encodes subtle distinctions the attention mechanism relies on, is crushed to 63 levels. Per-token quantization avoids this by giving each token its own optimal scale.
+Under per-head shared scale (covering both tokens): range must span [-2.1, 3.2], so scale \\(= 5.3 / 255 = 0.0208\\). Token 1’s values in [-0.5, 0.8] now get only \\(1.3 / 0.0208 \approx 63\\) usable levels instead of 256 — a 4× loss in resolution. Token 1’s key vector, which encodes subtle distinctions the attention mechanism relies on, is crushed to 63 levels. Per-token quantization avoids this by giving each token its own optimal scale.
 
 *Canonical category: mitigates Calibration Mismatch (per-input scaling). May still suffer Distribution Mismatch within the vector if the distribution is highly peaked.*
 
@@ -101,7 +101,7 @@ A coarser approach: compute one scale per head per layer, shared across all toke
 
 ### Sliding-Window Scale Updates
 
-A compromise: compute the scale from the most recent $W$ tokens and apply it to the entire cache. As new tokens arrive, the scale is recomputed and the existing cache is (optionally) requantized to the updated scale.
+A compromise: compute the scale from the most recent \\(W\\) tokens and apply it to the entire cache. As new tokens arrive, the scale is recomputed and the existing cache is (optionally) requantized to the updated scale.
 
 This introduces a new problem: requantizing old cache entries under a new scale introduces error at every update. If the distribution is stable, updates are rare and error is low. If the distribution drifts, frequent updates trade requantization error for range accuracy.
 
@@ -111,16 +111,16 @@ This introduces a new problem: requantizing old cache entries under a new scale 
 
 Recent research shows that keys and values have different quantization sensitivities:
 
-- **Keys** participate in attention score computation ($QK^T$). Errors in keys shift attention weights, potentially causing the model to attend to the wrong tokens. Key quantization is high-sensitivity.
+- **Keys** participate in attention score computation (\\(QK^T\\)). Errors in keys shift attention weights, potentially causing the model to attend to the wrong tokens. Key quantization is high-sensitivity.
 - **Values** are weighted-summed by the attention weights. Errors in values are smoothed by the averaging — an error in one value is diluted by all the other values it's averaged with. Value quantization is lower-sensitivity.
 
 This asymmetry suggests different precision for keys and values: int8 keys with int4 values, or FP8 keys with int8 values. The memory savings from aggressive value quantization can be substantial — values constitute half the KV-cache — while keys maintain higher precision where it matters.
 
 **Worked example: asymmetric key/value quantization.** 70B model, 80 layers, 8 KV-heads, dim 128, 32K tokens.
 
-- Uniform int8 (keys and values): KV-cache $= 80 \times 2 \times 8 \times 128 \times 32{,}768 \times 1 = 5.12$ GB. Memory savings vs float16: 50%.
-- Uniform int4: KV-cache $= 2.56$ GB. Savings: 75%. But key quantization error at int4 is severe — attention scores shift by $\pm 0.3$ (from Chapter 5’s noise model at int4 step sizes), causing wrong-token attention. Perplexity increase: ~2–5 points.
-- Asymmetric (int8 keys, int4 values): KV-cache $= 80 \times 8 \times 128 \times 32{,}768 \times (1 + 0.5) = 3.84$ GB. Savings: 62.5%. Key precision maintained. Value errors are smoothed by the attention-weighted averaging: a value quantization error of 0.03 is diluted across all tokens being averaged (typically 10–50 tokens with significant attention weight), reducing effective error to $0.03 / \sqrt{20} \approx 0.007$. Perplexity increase: ~0.1–0.5 points — dramatically better than uniform int4.
+- Uniform int8 (keys and values): KV-cache \\(= 80 \times 2 \times 8 \times 128 \times 32{,}768 \times 1 = 5.12\\) GB. Memory savings vs float16: 50%.
+- Uniform int4: KV-cache \\(= 2.56\\) GB. Savings: 75%. But key quantization error at int4 is severe — attention scores shift by \\(\pm 0.3\\) (from Chapter 5’s noise model at int4 step sizes), causing wrong-token attention. Perplexity increase: ~2–5 points.
+- Asymmetric (int8 keys, int4 values): KV-cache \\(= 80 \times 8 \times 128 \times 32{,}768 \times (1 + 0.5) = 3.84\\) GB. Savings: 62.5%. Key precision maintained. Value errors are smoothed by the attention-weighted averaging: a value quantization error of 0.03 is diluted across all tokens being averaged (typically 10–50 tokens with significant attention weight), reducing effective error to \\(0.03 / \sqrt{20} \approx 0.007\\). Perplexity increase: ~0.1–0.5 points — dramatically better than uniform int4.
 
 *Canonical category: reduces effective Resolution Collapse where it matters most (keys, which steer attention) and accepts more in values (which are averaged).*
 
@@ -149,7 +149,7 @@ The failure mode is subtle: the model does not crash or produce garbage. It grad
 
 The most common deployed approach today:
 
-1. **Keys in int8, values in int8**, with per-head scales updated every $N$ tokens (typically $N = 256$ or $N = 512$).
+1. **Keys in int8, values in int8**, with per-head scales updated every \\(N\\) tokens (typically \\(N = 256\\) or \\(N = 512\\)).
 2. **FP8 (E4M3)** for both keys and values, which provides a non-uniform grid (Chapter 19) better suited to the peaked distributions of attention projections.
 3. **Paged attention** (used in vLLM and TensorRT-LLM) manages KV-cache memory in fixed-size blocks, where quantization operates per-block. This aligns memory management with quantization granularity.
 

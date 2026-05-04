@@ -673,7 +673,7 @@ docker pull nvcr.io/nvidia/tritonserver:24.05-trtllm-python-py3
 <hr />
 <h3 id="int8-tensor-cores"><a class="header" href="#int8-tensor-cores">INT8 Tensor Cores</a></h3>
 <p>Starting with Turing, NVIDIA Tensor Cores can perform INT8 matrix multiplication with INT32 accumulation:</p>
-<p>$$C_{int32} = A_{int8} \times B_{int8} + C_{int32}$$</p>
+<p>\(C_{int32} = A_{int8} \times B_{int8} + C_{int32}\)</p>
 <p>This is the same pattern as Qualcomm's HTP — multiply in low precision, accumulate in high precision to avoid overflow.</p>
 <p><strong>Throughput advantage (peak theoretical):</strong> On an A100, INT8 Tensor Core throughput is <strong>2× FP16</strong> throughput:</p>
 <ul>
@@ -829,22 +829,22 @@ DQ(W) + MatMul + DQ(X) → Q(Y)   → INT8 MatMul with fused requantization
 <p><strong>How it works:</strong> For each activation tensor, TensorRT:</p>
 <ol>
 <li>Records the histogram of values during calibration</li>
-<li>For each candidate clipping threshold $T$, computes the KL divergence between the original FP32 distribution and the quantized INT8 distribution</li>
-<li>Selects the threshold $T$ that minimizes KL divergence</li>
+<li>For each candidate clipping threshold \(T\), computes the KL divergence between the original FP32 distribution and the quantized INT8 distribution</li>
+<li>Selects the threshold \(T\) that minimizes KL divergence</li>
 </ol>
-<p>$$T^* = \arg\min_T D_{KL}(P_{fp32} | Q_{int8}(T))$$</p>
+<p>\(T^* = \arg\min_T D_{KL}(P_{fp32} | Q_{int8}(T))\)</p>
 <p><strong>Why KL divergence?</strong> KL divergence measures how much information is lost when approximating the FP32 distribution with the INT8 distribution. Minimizing it means the quantized distribution is as close as possible to the original, in an information-theoretic sense.</p>
 <p><strong>Trade-off:</strong> Entropy calibration may clip outliers — it does not necessarily preserve the max value. If 0.1% of values are at 100.0 but 99.9% are below 5.0, entropy calibration might set the threshold at 8.0, clipping the outliers but preserving resolution for the bulk of values.</p>
 <p>This is the <strong>default</strong> calibration method in TensorRT and works well for most CNN models.</p>
 <hr />
 <h4 id="minmax-calibration"><a class="header" href="#minmax-calibration">MinMax Calibration</a></h4>
 <p><strong>How it works:</strong> Simply uses the minimum and maximum observed values as the quantization range:</p>
-<p>$$S = \frac{\max(|x_{observed}|)}{127}$$</p>
+<p>\(S = \frac{\max(|x_{observed}|)}{127}\)</p>
 <p><strong>When to use:</strong> When outlier preservation is critical — e.g., when even the maximum activation value carries important information. This is conservative but wastes resolution if outliers are rare.</p>
 <hr />
 <h4 id="percentile-calibration"><a class="header" href="#percentile-calibration">Percentile Calibration</a></h4>
 <p><strong>How it works:</strong> Uses the 99.99th percentile (or another configurable percentile) of the observed values instead of the true maximum:</p>
-<p>$$S = \frac{\text{percentile}(|x|, 99.99)}{127}$$</p>
+<p>\(S = \frac{\text{percentile}(|x|, 99.99)}{127}\)</p>
 <p><strong>When to use:</strong> When there are extreme outliers that should be clipped, but you want more control than entropy calibration provides.</p>
 <h4 id="which-calibration-algorithm-for-which-model"><a class="header" href="#which-calibration-algorithm-for-which-model">Which Calibration Algorithm for Which Model?</a></h4>
 <div class="table-wrapper"><table><thead><tr><th>Model Type</th><th>Recommended Algorithm</th><th>Why</th></tr></thead><tbody>
@@ -1239,7 +1239,7 @@ predictions = np.exp(h_output) / np.sum(np.exp(h_output), axis=-1, keepdims=True
 <p>LLMs have properties that break the standard TensorRT workflow:</p>
 <ol>
 <li>
-<p><strong>Autoregressive generation</strong> — the model runs token-by-token, with each forward pass producing one token. The output of step $t$ is the input to step $t+1$. Standard TensorRT expects a single forward pass with fixed shapes.</p>
+<p><strong>Autoregressive generation</strong> — the model runs token-by-token, with each forward pass producing one token. The output of step \(t\) is the input to step \(t+1\). Standard TensorRT expects a single forward pass with fixed shapes.</p>
 </li>
 <li>
 <p><strong>KV cache</strong> — past key-value pairs must be stored and grown across generation steps. This is a large, dynamically growing memory allocation that standard TensorRT does not manage.</p>
@@ -1792,7 +1792,7 @@ trtexec --onnx=model_v2.onnx --int8 --fp16 --timingCacheFile=timing.cache --save
 <hr />
 <h3 id="imma-instructions-for-int8"><a class="header" href="#imma-instructions-for-int8">IMMA Instructions for INT8</a></h3>
 <p><strong>IMMA</strong> (Integer Matrix Multiply-Accumulate) is the Tensor Core instruction set for INT8 computation. On Turing and later:</p>
-<p>$$C_{m \times n}^{int32} += A_{m \times k}^{int8} \times B_{k \times n}^{int8}$$</p>
+<p>\(C_{m \times n}^{int32} += A_{m \times k}^{int8} \times B_{k \times n}^{int8}\)</p>
 <p>The Tensor Core processes a 8×8×32 tile in a single cycle:</p>
 <ul>
 <li>Reads 8×32 = 256 INT8 values from matrix A</li>
@@ -1809,7 +1809,7 @@ trtexec --onnx=model_v2.onnx --int8 --fp16 --timingCacheFile=timing.cache --save
 <hr />
 <h3 id="fp8-gemm-in-cublas"><a class="header" href="#fp8-gemm-in-cublas">FP8 GEMM in cuBLAS</a></h3>
 <p>On Hopper GPUs, cuBLAS provides FP8 GEMM kernels:</p>
-<p>$$C_{fp16} = \text{scale}<em>A \times A</em>{fp8} \times \text{scale}<em>B \times B</em>{fp8}$$</p>
+<p>\(C_{fp16} = \text{scale}<em>A \times A</em>{fp8} \times \text{scale}<em>B \times B</em>{fp8}\)</p>
 <p>Each input tensor has a per-tensor scaling factor. The multiplication is performed in FP8 on Tensor Cores, and the result is accumulated in FP32 (inside the Tensor Core), then converted to FP16 or BF16 for output.</p>
 <p><strong>cuBLAS FP8 API:</strong></p>
 <pre><code class="language-cpp">cublasLtMatmul(

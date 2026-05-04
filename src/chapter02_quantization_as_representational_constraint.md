@@ -18,7 +18,7 @@ Suppose the range is [-1.0, 1.0]. Those 256 levels must span 2.0 units of real-v
 
 $$\Delta = \frac{r_{\max} - r_{\min}}{L - 1}$$
 
-where $L$ is the number of levels and we assume the representable endpoints align with the range boundaries (levels include both endpoints — this is the standard convention in most quantization implementations). We use $L - 1$ in the denominator, not $L$, because we are counting the *gaps between* levels rather than the levels themselves: with 256 levels, there are 255 gaps. For [-1.0, 1.0] with $L = 256$:
+where \\(L\\) is the number of levels and we assume the representable endpoints align with the range boundaries (levels include both endpoints — this is the standard convention in most quantization implementations). We use \\(L - 1\\) in the denominator, not \\(L\\), because we are counting the *gaps between* levels rather than the levels themselves: with 256 levels, there are 255 gaps. For [-1.0, 1.0] with \\(L = 256\\):
 
 $$\Delta = \frac{2.0}{255} \approx 0.00784$$
 
@@ -51,21 +51,21 @@ Quantization places a uniform grid over a range. The grid has a fixed number of 
 
 Consider a layer whose activation values in float32 fall in the range [-1.0, 1.0]. Under int8 quantization with 256 levels:
 
-- The value 0.3021 maps to grid point $0.2980$ (integer index 166).
-- The value 0.3058 also maps to grid point $0.2980$ (integer index 166).
+- The value 0.3021 maps to grid point \\(0.2980\\) (integer index 166).
+- The value 0.3058 also maps to grid point \\(0.2980\\) (integer index 166).
 - These two values — distinct in float32 — are now the same number. Whatever functional difference the network relied on between 0.3021 and 0.3058 is gone.
 
-The mapping rule for this simplified case (unsigned codes 0 to $L-1$):
+The mapping rule for this simplified case (unsigned codes 0 to \\(L-1\\)):
 
 $$q = \text{round}\!\left(\frac{r - r_{\min}}{\Delta}\right), \qquad r' = r_{\min} + q \cdot \Delta$$
 
-For 0.3021 with $r_{\min} = -1.0$ and $\Delta \approx 0.00784$: $q \approx \text{round}(1.3021\,/\,0.00784) = 166$, recovering $r' = -1.0 + 166 \times 0.00784 = 0.2980$.
+For 0.3021 with \\(r_{\min} = -1.0\\) and \\(\Delta \approx 0.00784\\): \\(q \approx \text{round}(1.3021\,/\,0.00784) = 166\\), recovering \\(r' = -1.0 + 166 \times 0.00784 = 0.2980\\).
 
 ### Worked Example: One Range, Three Outcomes
 
 To anchor the intuition for the rest of the book, here is a single complete example showing scale computation, clean rounding, and clipping — the three things that happen to every value entering a quantized layer.
 
-**Setup.** A layer's activation range is $[-1.2, 1.0]$. We quantize to int8 asymmetric (unsigned codes $0$ to $255$).
+**Setup.** A layer's activation range is \\([-1.2, 1.0]\\). We quantize to int8 asymmetric (unsigned codes \\(0\\) to \\(255\\)).
 
 **Step 1 — Scale and zero-point.**
 
@@ -73,25 +73,25 @@ $$S = \frac{r_{\max} - r_{\min}}{255} = \frac{1.0 - (-1.2)}{255} = \frac{2.2}{25
 
 $$Z = \text{round}\!\left(\frac{0 - r_{\min}}{S}\right) = \text{round}\!\left(\frac{1.2}{0.008627}\right) = \text{round}(139.1) = 139$$
 
-So integer code 139 corresponds to real value 0.0 (approximately). The grid spans from code 0 ($= -1.2$) to code 255 ($= 1.0$).
+So integer code 139 corresponds to real value 0.0 (approximately). The grid spans from code 0 (\\(= -1.2\\)) to code 255 (\\(= 1.0\\)).
 
-**Step 2 — A value that rounds cleanly.** Take $r = 0.37$.
+**Step 2 — A value that rounds cleanly.** Take \\(r = 0.37\\).
 
 $$q = \text{round}\!\left(\frac{0.37}{0.008627}\right) + 139 = \text{round}(42.89) + 139 = 43 + 139 = 182$$
 
 $$r' = (182 - 139) \times 0.008627 = 43 \times 0.008627 = 0.3710$$
 
-Error: $|0.37 - 0.3710| = 0.0010$. Well within the maximum rounding error of $S/2 \approx 0.0043$. The grid handled this value without trouble.
+Error: \\(|0.37 - 0.3710| = 0.0010\\). Well within the maximum rounding error of \\(S/2 \approx 0.0043\\). The grid handled this value without trouble.
 
-**Step 3 — A value that clips.** Take $r = 1.5$ (outside the range).
+**Step 3 — A value that clips.** Take \\(r = 1.5\\) (outside the range).
 
 $$q = \text{round}\!\left(\frac{1.5}{0.008627}\right) + 139 = \text{round}(173.8) + 139 = 174 + 139 = 313$$
 
-But int8 unsigned can only hold codes $0$ to $255$. Code 313 is clamped to 255.
+But int8 unsigned can only hold codes \\(0\\) to \\(255\\). Code 313 is clamped to 255.
 
 $$r' = (255 - 139) \times 0.008627 = 116 \times 0.008627 = 1.0007 \approx 1.0$$
 
-Error: $|1.5 - 1.0| = 0.5$. That is ~$500\times$ larger than the rounding error above. The value was outside the representable range and was crushed to the boundary. This is clipping error (Chapter 5).
+Error: \\(|1.5 - 1.0| = 0.5\\). That is ~\\(500\times\\) larger than the rounding error above. The value was outside the representable range and was crushed to the boundary. This is clipping error (Chapter 5).
 
 **Takeaway.** Same grid, same scale — two completely different error magnitudes. The value inside the range lost 0.001. The value outside lost 0.5. This is why range selection (Chapter 9) determines whether quantization succeeds or fails.
 

@@ -61,7 +61,7 @@ Each of the five patterns below maps to one or more of these checkpoints. Use th
 
 **Root cause:** A few extreme values in the activation or weight distribution force the scale wide, destroying resolution for the majority of values. This is representation error (Chapter 5) caused by a range set too wide to accommodate outliers.
 
-**Mechanism:** Consider a layer where 99.9% of activations fall in [-1.0, 3.0] but one channel produces values reaching 50.0. If the observer uses min-max (Chapter 9), the scale is set for [-1.0, 50.0] — a range of 51 units. The step size is $51/255 \approx 0.20$. Values in the common range [-1.0, 3.0] get approximately 20 grid points. The layer effectively operates at 4–5 bit resolution instead of 8 bit.
+**Mechanism:** Consider a layer where 99.9% of activations fall in [-1.0, 3.0] but one channel produces values reaching 50.0. If the observer uses min-max (Chapter 9), the scale is set for [-1.0, 50.0] — a range of 51 units. The step size is \\(51/255 \approx 0.20\\). Values in the common range [-1.0, 3.0] get approximately 20 grid points. The layer effectively operates at 4–5 bit resolution instead of 8 bit.
 
 **Diagnostic question:** What is the ratio between the 99.9th percentile and the maximum activation value? The *99.9th percentile* (written p99.9) is the value below which 99.9% of observations fall — it is robust to single extreme outliers. A p99.9/max ratio below 0.1 (i.e., the maximum is more than 10× the 99.9th percentile) strongly suggests outlier explosion.
 
@@ -84,20 +84,20 @@ Each of the five patterns below maps to one or more of these checkpoints. Use th
 
 **Mechanism:** In a ResNet with 25 residual blocks, each block contributes one error-merging site. If the main and residual paths have mismatched scales, each merge point also contributes a rescale boundary. Over 25 blocks, the accumulated error from independently quantized paths reshapes the representation — particularly in the higher layers where the model relies on subtle activation differences.
 
-**Worked example: how small errors amplify through depth.** Consider a 4-layer network where each layer multiplies its input by a weight matrix (simplified as a scalar multiplier $m$ for illustration).
+**Worked example: how small errors amplify through depth.** Consider a 4-layer network where each layer multiplies its input by a weight matrix (simplified as a scalar multiplier \\(m\\) for illustration).
 
-- Layer 1 receives input $x = 1.000$, multiplier $m_1 = 1.5$. Quantization introduces error $\epsilon_1 = 0.004$.
-  - Output: $1.5 \times 1.000 + 0.004 = 1.504$ (true: 1.500).
-- Layer 2 receives 1.504, multiplier $m_2 = 2.0$. Adds its own error $\epsilon_2 = 0.003$.
-  - Output: $2.0 \times 1.504 + 0.003 = 3.011$ (true: $2.0 \times 1.500 = 3.000$). Cumulative error: 0.011.
-- Layer 3 receives 3.011, multiplier $m_3 = 1.8$. Adds $\epsilon_3 = 0.005$.
-  - Output: $1.8 \times 3.011 + 0.005 = 5.425$ (true: $1.8 \times 3.000 = 5.400$). Cumulative error: 0.025.
-- Layer 4 receives 5.425, multiplier $m_4 = 2.5$. Adds $\epsilon_4 = 0.004$.
-  - Output: $2.5 \times 5.425 + 0.004 = 13.567$ (true: $2.5 \times 5.400 = 13.500$). Cumulative error: **0.067**.
+- Layer 1 receives input \\(x = 1.000\\), multiplier \\(m_1 = 1.5\\). Quantization introduces error \\(\epsilon_1 = 0.004\\).
+  - Output: \\(1.5 \times 1.000 + 0.004 = 1.504\\) (true: 1.500).
+- Layer 2 receives 1.504, multiplier \\(m_2 = 2.0\\). Adds its own error \\(\epsilon_2 = 0.003\\).
+  - Output: \\(2.0 \times 1.504 + 0.003 = 3.011\\) (true: \\(2.0 \times 1.500 = 3.000\\)). Cumulative error: 0.011.
+- Layer 3 receives 3.011, multiplier \\(m_3 = 1.8\\). Adds \\(\epsilon_3 = 0.005\\).
+  - Output: \\(1.8 \times 3.011 + 0.005 = 5.425\\) (true: \\(1.8 \times 3.000 = 5.400\\)). Cumulative error: 0.025.
+- Layer 4 receives 5.425, multiplier \\(m_4 = 2.5\\). Adds \\(\epsilon_4 = 0.004\\).
+  - Output: \\(2.5 \times 5.425 + 0.004 = 13.567\\) (true: \\(2.5 \times 5.400 = 13.500\\)). Cumulative error: **0.067**.
 
-Each layer's individual error is tiny (0.003–0.005). But Layer 1's error of 0.004 was multiplied by $m_2 \times m_3 \times m_4 = 2.0 \times 1.8 \times 2.5 = 9.0$, contributing 0.036 to the final error alone. The errors don't just add — they get *amplified* by every subsequent layer's weights. This is why residual-ghost failures scale with depth, and why early layers are more sensitive: their errors pass through more amplification stages.
+Each layer's individual error is tiny (0.003–0.005). But Layer 1's error of 0.004 was multiplied by \\(m_2 \times m_3 \times m_4 = 2.0 \times 1.8 \times 2.5 = 9.0\\), contributing 0.036 to the final error alone. The errors don't just add — they get *amplified* by every subsequent layer's weights. This is why residual-ghost failures scale with depth, and why early layers are more sensitive: their errors pass through more amplification stages.
 
-**Diagnostic question:** At each residual addition, do the main and residual paths share the same $(S, Z)$? How many rescale insertions exist in the fused graph?
+**Diagnostic question:** At each residual addition, do the main and residual paths share the same \\((S, Z)\\)? How many rescale insertions exist in the fused graph?
 
 **Fix / Mitigation:**
 
@@ -118,7 +118,7 @@ Each layer's individual error is tiny (0.003–0.005). But Layer 1's error of 0.
 
 **Mechanism:** A model uses GELU activation, which is not in the int8 capability envelope of the target backend. At each GELU layer, the runtime dequantizes int8 to float32, computes GELU in float, and requantizes back to int8. Each fallback adds two memory-format conversions and two requantization boundaries. If GELU appears after every linear layer in a 24-layer transformer, that is 48 additional boundaries and 48 additional memory round trips — none of which were in the quantization plan.
 
-**Concrete latency cost.** For a [1, 4096] activation tensor in int8 (4 KB), each fallback boundary requires: dequantize int8 → float32 (4 KB → 16 KB, kernel launch ~5 µs), GELU compute in float32 (~20 µs), requantize float32 → int8 (16 KB → 4 KB, ~5 µs). Per-layer fallback cost: ~30 µs. If the fused int8 Linear-ReLU alternative takes ~25 µs for compute, the GELU fallback adds 5 µs overhead per layer. Across 24 layers: $24 \times 5 = 120$ µs extra per inference. For a model that should complete inference in 2 ms, this is a 6% slowdown from a single unsupported activation function — and the model appears fully quantized in the graph.
+**Concrete latency cost.** For a [1, 4096] activation tensor in int8 (4 KB), each fallback boundary requires: dequantize int8 → float32 (4 KB → 16 KB, kernel launch ~5 µs), GELU compute in float32 (~20 µs), requantize float32 → int8 (16 KB → 4 KB, ~5 µs). Per-layer fallback cost: ~30 µs. If the fused int8 Linear-ReLU alternative takes ~25 µs for compute, the GELU fallback adds 5 µs overhead per layer. Across 24 layers: \\(24 \times 5 = 120\\) µs extra per inference. For a model that should complete inference in 2 ms, this is a 6% slowdown from a single unsupported activation function — and the model appears fully quantized in the graph.
 
 The model appears quantized. The weights are int8. But the critical path runs through float operations surrounded by conversions, and the net effect is worse than running the entire model in float.
 
@@ -160,9 +160,9 @@ The model appears quantized. The weights are int8. But the critical path runs th
 
 **Root cause:** Elementwise operations (add, concat) with inputs from branches that have different scales force rescale insertions (Chapter 8). Each insertion adds a requantization boundary that was not in the original plan.
 
-**Mechanism:** A model with a feature pyramid network concatenates feature maps from different stages. Each stage has been quantized with different scales. The concatenation requires all inputs to share one $(S, Z)$. Rescale operations are inserted on two of the three input branches, adding two boundaries at each pyramid level. Across four pyramid levels, eight additional boundaries appear — each introducing rounding error.
+**Mechanism:** A model with a feature pyramid network concatenates feature maps from different stages. Each stage has been quantized with different scales. The concatenation requires all inputs to share one \\((S, Z)\\). Rescale operations are inserted on two of the three input branches, adding two boundaries at each pyramid level. Across four pyramid levels, eight additional boundaries appear — each introducing rounding error.
 
-**Diagnostic question:** At each elementwise operation, do all inputs share the same $(S, Z)$? How many rescale insertions does the fused graph contain?
+**Diagnostic question:** At each elementwise operation, do all inputs share the same \\((S, Z)\\)? How many rescale insertions does the fused graph contain?
 
 **Fix / Mitigation:**
 

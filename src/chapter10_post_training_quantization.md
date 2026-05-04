@@ -28,13 +28,13 @@ After PTQ, the model is fully static. Weights are stored as int8 integers — th
 
 **Concrete memory layout.** A layer with [4096 × 4096] weights under per-channel int8 quantization:
 
-- Weight data: $4096 \times 4096 \times 1$ byte = 16 MB (int8)
+- Weight data: \\(4096 \times 4096 \times 1\\) byte = 16 MB (int8)
 - Scale metadata: 4096 scales (one per output channel) × 2 bytes (float16) = 8 KB
 - Per-layer footprint: 16.008 MB
-- Compared to float32: $4096 \times 4096 \times 4$ bytes = 64 MB
-- Compression: $64 / 16.008 \approx 4.0\times$
+- Compared to float32: \\(4096 \times 4096 \times 4\\) bytes = 64 MB
+- Compression: \\(64 / 16.008 \approx 4.0\times\\)
 
-For a 24-layer model: $24 \times 16.008 \approx 384$ MB weights + 192 KB scales. Float32 equivalent: $24 \times 64 = 1{,}536$ MB. The scale metadata (192 KB) is 0.05% of weight data — negligible overhead for per-channel quantization.
+For a 24-layer model: \\(24 \times 16.008 \approx 384\\) MB weights + 192 KB scales. Float32 equivalent: \\(24 \times 64 = 1{,}536\\) MB. The scale metadata (192 KB) is 0.05% of weight data — negligible overhead for per-channel quantization.
 
 During inference, the hardware converts each layer's floating-point activations to int8 using the stored constants, executes the int8 matmul, and produces results — with no range computation at runtime. This is the performance advantage of static quantization: the hardware never pauses to scan a tensor for its min/max. Every parameter was decided during steps 3–6 above, and the inference engine simply reads them from memory.
 
@@ -56,10 +56,10 @@ This passivity is both the strength and the limitation of PTQ.
 
 **Worked example: why PTQ has a ceiling.** Consider a layer with 4096 output channels. Per-channel weight ranges for 4095 channels fall in [0.01, 0.05] (range 0.04). One outlier channel has range [0.01, 5.2] (range 5.19). Under per-channel int8 quantization:
 
-- Normal channels: step size $= 0.04 / 255 \approx 0.000157$ — fine resolution
-- Outlier channel: step size $= 5.19 / 255 \approx 0.0204$ — 130× coarser
+- Normal channels: step size \\(= 0.04 / 255 \approx 0.000157\\) — fine resolution
+- Outlier channel: step size \\(= 5.19 / 255 \approx 0.0204\\) — 130× coarser
 
-A weight of 0.03 in a normal channel maps to code $\text{round}((0.03 - 0.01) / 0.000157) = 127$, with error $< 0.000079$. The same weight of 0.03 in the outlier channel maps to code $\text{round}((0.03 - 0.01) / 0.0204) = 1$, dequantized to $0.01 + 1 \times 0.0204 = 0.0304$, with error 0.0004 — 5× larger, but still small. The real problem: a weight of 0.035 in the outlier channel also maps to code 1, making 0.030 and 0.035 indistinguishable. In the normal channel, they map to codes 127 and 159 — clearly distinct.
+A weight of 0.03 in a normal channel maps to code \\(\text{round}((0.03 - 0.01) / 0.000157) = 127\\), with error \\(< 0.000079\\). The same weight of 0.03 in the outlier channel maps to code \\(\text{round}((0.03 - 0.01) / 0.0204) = 1\\), dequantized to \\(0.01 + 1 \times 0.0204 = 0.0304\\), with error 0.0004 — 5× larger, but still small. The real problem: a weight of 0.035 in the outlier channel also maps to code 1, making 0.030 and 0.035 indistinguishable. In the normal channel, they map to codes 127 and 159 — clearly distinct.
 
 PTQ accepts this. QAT (Chapter 11) could push the outlier channel’s values toward a tighter range during training, reducing its step size. PTQ cannot — it works with the distributions as they exist.
 

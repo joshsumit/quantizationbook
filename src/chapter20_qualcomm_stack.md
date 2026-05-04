@@ -182,13 +182,13 @@ Expanding:
 
 $$Y = S_w \cdot S_x \cdot \left[\sum_i W_{q,i} X_{q,i} - Z_w \sum_i X_{q,i} - Z_x \sum_i W_{q,i} + N \cdot Z_w \cdot Z_x \right]$$
 
-That is four terms per MAC. With **symmetric weights** ($Z_w = 0$), the second and fourth terms vanish:
+That is four terms per MAC. With **symmetric weights** (\\(Z_w = 0\\)), the second and fourth terms vanish:
 
 $$Y = S_w \cdot S_x \cdot \left[\sum_i W_{q,i} X_{q,i} - Z_x \sum_i W_{q,i}\right]$$
 
-The $Z_x \sum_i W_{q,i}$ term is a **precomputable bias** — it depends only on weights and the activation zero-point, both of which are known at compile time. QNN precomputes this and folds it into the bias. The HTP hardware then only needs to execute the raw $\sum_i W_{q,i} X_{q,i}$ MAC — which is exactly what its integer-only pipeline is optimized for.
+The \\(Z_x \sum_i W_{q,i}\\) term is a **precomputable bias** — it depends only on weights and the activation zero-point, both of which are known at compile time. QNN precomputes this and folds it into the bias. The HTP hardware then only needs to execute the raw \\(\sum_i W_{q,i} X_{q,i}\\) MAC — which is exactly what its integer-only pipeline is optimized for.
 
-If you use asymmetric weights ($Z_w \neq 0$), the hardware must compute the extra $Z_w \sum_i X_{q,i}$ term at runtime. This cannot be precomputed because $X_{q,i}$ changes every inference. The result: additional instructions per MAC, wasted cycles, and potentially a fallback to a slower kernel path.
+If you use asymmetric weights (\\(Z_w \neq 0\\)), the hardware must compute the extra \\(Z_w \sum_i X_{q,i}\\) term at runtime. This cannot be precomputed because \\(X_{q,i}\\) changes every inference. The result: additional instructions per MAC, wasted cycles, and potentially a fallback to a slower kernel path.
 
 **Bottom line:** Symmetric weights are not optional on HTP. They are the only path to the fast MAC pipeline.
 
@@ -196,17 +196,17 @@ If you use asymmetric weights ($Z_w \neq 0$), the hardware must compute the extr
 
 **Group-wise Quantization (for LLMs):**
 
-Per-channel quantization assigns one scale per output channel. For a weight matrix of shape $[\text{out}, \text{in}]$, that is $\text{out}$ scales. But for large language models, per-channel is sometimes too coarse — a single channel in a 4096-wide projection might have weights spanning a wide range.
+Per-channel quantization assigns one scale per output channel. For a weight matrix of shape \\([\text{out}, \text{in}]\\), that is \\(\text{out}\\) scales. But for large language models, per-channel is sometimes too coarse — a single channel in a 4096-wide projection might have weights spanning a wide range.
 
-**Group-wise quantization** splits each channel into groups of $G$ consecutive elements and assigns a separate scale to each group:
+**Group-wise quantization** splits each channel into groups of \\(G\\) consecutive elements and assigns a separate scale to each group:
 
 $$W[i, j] \approx S_{i, \lfloor j/G \rfloor} \cdot W_q[i, j]$$
 
-Common group sizes: $G = 32$, $G = 64$, $G = 128$.
+Common group sizes: \\(G = 32\\), \\(G = 64\\), \\(G = 128\\).
 
-For a weight matrix of shape $[4096, 4096]$ with $G = 128$:
+For a weight matrix of shape \\([4096, 4096]\\) with \\(G = 128\\):
 - Per-channel: 4096 scales
-- Group-wise: $4096 \times (4096 / 128) = 131,072$ scales
+- Group-wise: \\(4096 \times (4096 / 128) = 131,072\\) scales
 
 More scales = finer granularity = less quantization error, but more metadata stored in the context binary.
 
@@ -273,13 +273,13 @@ CLE is AIMET's "free lunch" — it improves quantization accuracy without any tr
 
 **The problem it solves:** In many models, consecutive layers have very different weight ranges. Layer A might have weights in [-0.01, 0.01] while layer B has weights in [-5.0, 5.0]. When both are quantized to INT8, layer A wastes most of its quantization range (only using a tiny fraction of the [-127, 127] integer range), while layer B uses the full range.
 
-**The insight:** For consecutive linear layers (or conv → conv sequences) with ReLU activations in between, you can mathematically rescale the weights of one layer up and the weights of the next layer down, without changing the model's output. This is because ReLU is a positive-homogeneous function: $\text{ReLU}(\alpha x) = \alpha \cdot \text{ReLU}(x)$ for $\alpha > 0$.
+**The insight:** For consecutive linear layers (or conv → conv sequences) with ReLU activations in between, you can mathematically rescale the weights of one layer up and the weights of the next layer down, without changing the model's output. This is because ReLU is a positive-homogeneous function: \\(\text{ReLU}(\alpha x) = \alpha \cdot \text{ReLU}(x)\\) for \\(\alpha > 0\\).
 
-**The math:** Given two consecutive layers with weight matrices $W_1$ and $W_2$, and a diagonal scaling matrix $S$:
+**The math:** Given two consecutive layers with weight matrices \\(W_1\\) and \\(W_2\\), and a diagonal scaling matrix \\(S\\):
 
 $$Y = W_2 \cdot \text{ReLU}(W_1 \cdot x) = (W_2 S^{-1}) \cdot \text{ReLU}((S W_1) \cdot x)$$
 
-The scaling $S$ is chosen to equalize the ranges of $W_1$ and $W_2$ across channels:
+The scaling \\(S\\) is chosen to equalize the ranges of \\(W_1\\) and \\(W_2\\) across channels:
 
 $$s_i = \sqrt{\frac{\text{range}(W_1^{(i)})}{\text{range}(W_2^{(i)})}}$$
 
@@ -305,17 +305,17 @@ Standard quantization rounds each weight to the nearest integer:
 
 $$q_i = \lfloor w_i / S \rceil$$
 
-This seems optimal per-element, but it is not optimal for the layer's output. Rounding weight $w_3$ up might increase the error for some inputs, while rounding it down might decrease the error — and the optimal direction depends on the correlations between weights and the typical input distribution.
+This seems optimal per-element, but it is not optimal for the layer's output. Rounding weight \\(w_3\\) up might increase the error for some inputs, while rounding it down might decrease the error — and the optimal direction depends on the correlations between weights and the typical input distribution.
 
 **AdaRound** learns a binary rounding decision for each weight — round up or round down — by minimizing the layer-wise reconstruction error:
 
 $$\min_{\mathbf{v}} \| W\mathbf{x} - \tilde{W}(\mathbf{v})\mathbf{x} \|_F^2 + \lambda \sum_i h(v_i)$$
 
 where:
-- $\mathbf{v} \in [0, 1]^n$ is a continuous relaxation of the rounding variable
-- $\tilde{W}(\mathbf{v})$ is the quantized weight with learned rounding
-- $h(v_i)$ is a regularizer that pushes $v_i$ toward 0 or 1 (forcing a hard rounding decision)
-- $\mathbf{x}$ comes from the calibration dataset
+- \\(\mathbf{v} \in [0, 1]^n\\) is a continuous relaxation of the rounding variable
+- \\(\tilde{W}(\mathbf{v})\\) is the quantized weight with learned rounding
+- \\(h(v_i)\\) is a regularizer that pushes \\(v_i\\) toward 0 or 1 (forcing a hard rounding decision)
+- \\(\mathbf{x}\\) comes from the calibration dataset
 
 This is solved with gradient descent — typically 10,000 iterations per layer, which takes seconds to minutes per layer on a GPU.
 
@@ -406,7 +406,7 @@ The encodings file is critical — it is what QNN reads to know how to quantize 
 **A note on `quant_scheme='tf_enhanced'`:**
 
 The name `tf_enhanced` is confusing — it does NOT mean "TensorFlow only." In AIMET's terminology:
-- `'tf'` = TensorFlow-style quantization: uses scale and offset (zero-point) encoding. This is the **scale/offset** scheme where $q = \text{clamp}(\text{round}(x/S) + Z, 0, 255)$. HTP is designed around this scheme for activations.
+- `'tf'` = TensorFlow-style quantization: uses scale and offset (zero-point) encoding. This is the **scale/offset** scheme where \\(q = \text{clamp}(\text{round}(x/S) + Z, 0, 255)\\). HTP is designed around this scheme for activations.
 - `'tf_enhanced'` = Same scale/offset scheme, but with **enhanced calibration** — AIMET uses a more sophisticated algorithm to find the optimal clipping range (minimizing MSE rather than just using min/max). This is almost always the right choice.
 - `'percentile'` = Uses a percentile of the observed range instead of the full min/max.
 
@@ -574,10 +574,10 @@ Channel activations observed during calibration:
 QNN Native's MinMax calibrator computes:
 $$S = \frac{62.0 - (-3.0)}{255} = \frac{65.0}{255} \approx 0.255$$
 
-Step size: 0.255. For the 99% of channels with values in $[-3, 3]$, the number of usable quantization levels is:
+Step size: 0.255. For the 99% of channels with values in \\([-3, 3]\\), the number of usable quantization levels is:
 $$\frac{6.0}{0.255} \approx 23 \text{ levels}$$
 
-Out of 256 available INT8 levels, 23 are used. **91% of the quantization budget is wasted** on the range $[3, 62]$ that only one outlier channel occupies. This is exactly the *Resolution Collapse* pattern from Chapter 14.
+Out of 256 available INT8 levels, 23 are used. **91% of the quantization budget is wasted** on the range \\([3, 62]\\) that only one outlier channel occupies. This is exactly the *Resolution Collapse* pattern from Chapter 14.
 
 **What AIMET does differently:**
 
@@ -779,8 +779,8 @@ The encodings file is a JSON file that specifies, for every quantized tensor in 
 |-------|-----------------|------------------|
 | `bitwidth` | INT8 or INT16 | If a layer is INT16, check if it was forced there by accuracy issues |
 | `is_symmetric` | Whether zero-point is 0 | Weights should be `true`, activations typically `false` |
-| `scale` | Step size ($S$) | Very large scale = coarse quantization = likely accuracy issue |
-| `offset` | Zero-point ($Z$) | Should be 0 for symmetric. Non-zero for asymmetric activations |
+| `scale` | Step size (\\(S\\)) | Very large scale = coarse quantization = likely accuracy issue |
+| `offset` | Zero-point (\\(Z\\)) | Should be 0 for symmetric. Non-zero for asymmetric activations |
 | `min/max` | Clipping range | Suspiciously wide range = one outlier stretching the grid |
 
 **Expert debugging technique:** Compare the `min/max` of two adjacent layers. If layer N has `max: 3.2` and layer N+1 has `max: 87.5`, there is likely an outlier explosion between them. That is where CLE or SmoothQuant should be applied.
@@ -794,7 +794,7 @@ The encodings file is a JSON file that specifies, for every quantized tensor in 
     "offset": 0
 }
 ```
-`offset: 0` confirms symmetric. `scale: 0.0034` means the weight range is approximately $\pm 0.0034 \times 127 \approx \pm 0.43$. This is typical for a well-trained layer.
+`offset: 0` confirms symmetric. `scale: 0.0034` means the weight range is approximately \\(\pm 0.0034 \times 127 \approx \pm 0.43\\). This is typical for a well-trained layer.
 
 **Activation encodings should look like this (after ReLU):**
 ```json
@@ -1538,17 +1538,17 @@ $$Y = W \cdot X + b$$
 **Integer-only equation (what HTP actually computes):**
 $$Y_q = W_q \cdot X_q + b_q$$
 
-where $W_q$, $X_q$ are the quantized INT8 tensors, and $b_q$ is a precomputed INT32 bias that absorbs the zero-point corrections and the original floating-point bias.
+where \\(W_q\\), \\(X_q\\) are the quantized INT8 tensors, and \\(b_q\\) is a precomputed INT32 bias that absorbs the zero-point corrections and the original floating-point bias.
 
 The full expansion:
 $$Y_q = \text{requantize}\left(\sum_i W_{q,i} \cdot X_{q,i} + b_q, \quad S_{\text{out}}, Z_{\text{out}}\right)$$
 
 where:
-- The MAC $\sum_i W_{q,i} \cdot X_{q,i}$ is computed in INT8×INT8 → INT32
-- $b_q$ is precomputed at compile time: $b_q = \text{round}(b_{\text{float}} / (S_w \cdot S_x)) - Z_x \sum_i W_{q,i}$
-- The result is **requantized** from INT32 to INT8 using the output scale $S_{\text{out}}$ and zero-point $Z_{\text{out}}$
+- The MAC \\(\sum_i W_{q,i} \cdot X_{q,i}\\) is computed in INT8×INT8 → INT32
+- \\(b_q\\) is precomputed at compile time: \\(b_q = \text{round}(b_{\text{float}} / (S_w \cdot S_x)) - Z_x \sum_i W_{q,i}\\)
+- The result is **requantized** from INT32 to INT8 using the output scale \\(S_{\text{out}}\\) and zero-point \\(Z_{\text{out}}\\)
 
-The combined scale factor $S_{\text{combined}} = (S_w \cdot S_x) / S_{\text{out}}$ is the only "floating-point-like" operation — and even this is implemented as a fixed-point multiply-and-shift on HTP. No floating-point unit is involved at any stage.
+The combined scale factor \\(S_{\text{combined}} = (S_w \cdot S_x) / S_{\text{out}}\\) is the only "floating-point-like" operation — and even this is implemented as a fixed-point multiply-and-shift on HTP. No floating-point unit is involved at any stage.
 
 **Why this matters:** When accuracy diverges between QuantSim (on your GPU) and on-device inference, the root cause is almost always this requantization step. QuantSim simulates quantization but computes in float32. The HTP computes everything in integers with fixed-point scale application. Tiny rounding differences at each requantization accumulate across layers.
 
@@ -1580,7 +1580,7 @@ transform = transforms.Compose([
 ])
 ```
 
-The AIMET calibration saw inputs in the range $[-2.1, 2.6]$ and set the input encoding accordingly:
+The AIMET calibration saw inputs in the range \\([-2.1, 2.6]\\) and set the input encoding accordingly:
 ```json
 "input_0": { "min": -2.1178, "max": 2.6417, "scale": 0.018664, "offset": -128 }
 ```
@@ -1697,15 +1697,15 @@ VTCM (Vector Tightly Coupled Memory) is the single most important hardware resou
 
 ### How Tiling Works
 
-A matrix multiply $Y = X \times W$ where $X$ is $[M \times K]$ and $W$ is $[K \times N]$ requires storing three tensors simultaneously:
-- Input tile of $X$
-- Weight tile of $W$
-- Output tile of $Y$
+A matrix multiply \\(Y = X \times W\\) where \\(X\\) is \\([M \times K]\\) and \\(W\\) is \\([K \times N]\\) requires storing three tensors simultaneously:
+- Input tile of \\(X\\)
+- Weight tile of \\(W\\)
+- Output tile of \\(Y\\)
 
-If $M = 512$ (sequence length), $K = 2048$ (hidden dim), $N = 2048$ (output dim), the full tensors are:
-- $X$: $512 \times 2048 \times 1\text{B} = 1\text{MB}$
-- $W$: $2048 \times 2048 \times 1\text{B} = 4\text{MB}$
-- $Y$: $512 \times 2048 \times 4\text{B (INT32 accumulator)} = 4\text{MB}$
+If \\(M = 512\\) (sequence length), \\(K = 2048\\) (hidden dim), \\(N = 2048\\) (output dim), the full tensors are:
+- \\(X\\): \\(512 \times 2048 \times 1\text{B} = 1\text{MB}\\)
+- \\(W\\): \\(2048 \times 2048 \times 1\text{B} = 4\text{MB}\\)
+- \\(Y\\): \\(512 \times 2048 \times 4\text{B (INT32 accumulator)} = 4\text{MB}\\)
 - **Total: 9MB** — far exceeds the 4MB VTCM on Snapdragon 8 Gen 3.
 
 The QNN compiler must **tile** this operation. It breaks the matrices into chunks that fit in VTCM:
@@ -1749,14 +1749,14 @@ When all tile data fits in VTCM, the MAC units are always fed — compute-bound,
 
 **Worked example: TinyLlama self-attention on Snapdragon 8 Gen 3 (4MB VTCM):**
 
-The self-attention $\text{Attn} = \text{Softmax}(Q K^T / \sqrt{d}) \cdot V$ involves:
-1. $Q K^T$: $[512 \times 64] \times [64 \times 512] = [512 \times 512]$ per head — 256KB output (INT32). **Fits in VTCM.** ✅
-2. Softmax over $[512 \times 512]$: 256KB. **Fits.** ✅ (but runs on HVX, not HTP)
-3. $\text{Attn} \times V$: $[512 \times 512] \times [512 \times 64] = [512 \times 64]$ — 32KB output. **Fits.** ✅
+The self-attention \\(\text{Attn} = \text{Softmax}(Q K^T / \sqrt{d}) \cdot V\\) involves:
+1. \\(Q K^T\\): \\([512 \times 64] \times [64 \times 512] = [512 \times 512]\\) per head — 256KB output (INT32). **Fits in VTCM.** ✅
+2. Softmax over \\([512 \times 512]\\): 256KB. **Fits.** ✅ (but runs on HVX, not HTP)
+3. \\(\text{Attn} \times V\\): \\([512 \times 512] \times [512 \times 64] = [512 \times 64]\\) — 32KB output. **Fits.** ✅
 
 Total per-head working set: ~544KB. With 32 heads, if computed sequentially per head: **544KB** at a time. Fits comfortably in 4MB VTCM.
 
-But if the compiler tries to compute all 32 heads in parallel: $32 \times 544\text{KB} = 17\text{MB}$. **Does not fit.** The compiler must serialize across heads and tile within each head.
+But if the compiler tries to compute all 32 heads in parallel: \\(32 \times 544\text{KB} = 17\text{MB}\\). **Does not fit.** The compiler must serialize across heads and tile within each head.
 
 **The tiling strategy the compiler chooses — sequential vs. parallel, tile size, which tensors stay in VTCM between operations — determines the DDR traffic.** The `--vtcm_mb` flag tells the compiler how much VTCM it can use. If you set it lower than the hardware provides (e.g., because another model is sharing the NPU), the compiler uses smaller tiles and generates more DDR traffic.
 
@@ -1768,7 +1768,7 @@ The QNN compiler is good at tiling standard operations (MatMul, Conv2d). But til
 
 1. **Custom ops without VTCM hints** — if your custom op does not declare its VTCM requirements (via `set_vtcm_required`), the compiler may not reserve VTCM for it. The op's inputs and outputs spill to DDR, and the surrounding tiled operations must re-load data.
 
-2. **Large intermediate tensors that cannot be tiled** — some operations produce outputs that must be fully materialized before the next operation can consume them. Example: the full $[512 \times 512]$ attention matrix must exist before Softmax. If sequence length grows to 2048, this becomes $[2048 \times 2048] \times 4\text{B} = 16\text{MB}$ (INT32) — far exceeding VTCM. The compiler must tile Softmax itself, which is complex and often suboptimal.
+2. **Large intermediate tensors that cannot be tiled** — some operations produce outputs that must be fully materialized before the next operation can consume them. Example: the full \\([512 \times 512]\\) attention matrix must exist before Softmax. If sequence length grows to 2048, this becomes \\([2048 \times 2048] \times 4\text{B} = 16\text{MB}\\) (INT32) — far exceeding VTCM. The compiler must tile Softmax itself, which is complex and often suboptimal.
 
 3. **Non-contiguous memory access patterns** — transpose, permute, and gather operations rearrange data in memory. After a transpose, data that was contiguous (and VTCM-friendly) may now be strided across DDR. The next operation must load it in small, non-contiguous chunks — much slower than streaming contiguous blocks.
 
@@ -1811,21 +1811,21 @@ Using symmetric quantization for activations that are strictly positive (post-Re
 
 **Worked example — why asymmetric activations matter:**
 
-A ReLU output produces values in $[0, 6.0]$ (ReLU6). With **symmetric INT8** quantization:
+A ReLU output produces values in \\([0, 6.0]\\) (ReLU6). With **symmetric INT8** quantization:
 $$S = \frac{6.0}{127} = 0.0472, \quad \text{range mapped: } [-6.0, +6.0]$$
 $$\text{Usable levels for } [0, 6.0]: 128 \text{ out of } 256 \text{ (50\% wasted)}$$
 
-The 128 levels for $[-6.0, 0)$ are **never used** — ReLU never produces negative values. You are paying for 256 levels but only using 128.
+The 128 levels for \\([-6.0, 0)\\) are **never used** — ReLU never produces negative values. You are paying for 256 levels but only using 128.
 
 With **asymmetric INT8** quantization:
 $$S = \frac{6.0 - 0.0}{255} = 0.0235, \quad Z = 0$$
 $$\text{Usable levels for } [0, 6.0]: 256 \text{ out of } 256 \text{ (0\% wasted)}$$
 
-Step size halved: $0.0235$ vs $0.0472$. **Double the resolution.** For the same 8 bits.
+Step size halved: \\(0.0235\\) vs \\(0.0472\\). **Double the resolution.** For the same 8 bits.
 
 This is why `tf_enhanced` (which uses asymmetric activations by default) is the right choice for HTP. And this is especially critical for LLM activations:
-- Post-SiLU in LLaMA/TinyLlama: values typically in $[-0.5, 8.0]$ — heavily skewed positive.
-- Post-Softmax in attention: values in $[0.0, 1.0]$ — strictly positive.
+- Post-SiLU in LLaMA/TinyLlama: values typically in \\([-0.5, 8.0]\\) — heavily skewed positive.
+- Post-Softmax in attention: values in \\([0.0, 1.0]\\) — strictly positive.
 - Post-RMSNorm: values centered near zero but not symmetric — slight asymmetry matters at INT8 precision.
 
 For each of these, asymmetric quantization preserves more information per bit.
@@ -1834,9 +1834,9 @@ For each of these, asymmetric quantization preserves more information per bit.
 VTCM is the secret sauce of HTP performance, but it is small — 4MB on Snapdragon 8 Gen 3, 8MB on X Elite. If an activation tensor for a single layer exceeds the available VTCM, the HTP cannot hold the full tensor on-chip. It must **tile** the operation: compute a slice, write it to DDR, load the next slice's inputs, compute, write, repeat.
 
 This is a critical failure pattern for LLMs on Snapdragon. Consider TinyLlama with a hidden dimension of 2048 and a sequence length of 512:
-- Activation tensor for one linear layer: $512 \times 2048 \times 1\ \text{byte (INT8)} = 1\text{MB}$
+- Activation tensor for one linear layer: \\(512 \times 2048 \times 1\ \text{byte (INT8)} = 1\text{MB}\\)
 - That fits in 4MB VTCM — fine for a single layer.
-- But KV cache for 22 layers at seq_len 512, 32 heads, head_dim 64: $2 \times 22 \times 512 \times 32 \times 64 \times 1\text{B} \approx 46\text{MB}$
+- But KV cache for 22 layers at seq_len 512, 32 heads, head_dim 64: \\(2 \times 22 \times 512 \times 32 \times 64 \times 1\text{B} \approx 46\text{MB}\\)
 - The KV cache does NOT fit in VTCM. It lives in DDR.
 
 Every attention layer must read KV cache from DDR → compute attention → write back. The DDR bandwidth (typically 25–50 GB/s on mobile) becomes the bottleneck, not HTP compute. This is why **KV cache quantization** (INT8 instead of FP16) and **forced VTCM residency** for the current-token KV slice are critical for LLM inference on Snapdragon.
@@ -1912,7 +1912,7 @@ The Qualcomm quantization stack is a pipeline with two quantization paths:
 
 The critical success factors:
 - **All operators on HTP** — zero CPU fallbacks. Use `--profiling_level detailed` to verify.
-- **Per-channel symmetric weights + per-tensor asymmetric activations** — the scheme HTP's MAC hardware is designed for. Symmetric weights eliminate the runtime $Z_w$ term. Asymmetric activations avoid wasting half the INT8 range on non-existent negative values.
+- **Per-channel symmetric weights + per-tensor asymmetric activations** — the scheme HTP's MAC hardware is designed for. Symmetric weights eliminate the runtime \\(Z_w\\) term. Asymmetric activations avoid wasting half the INT8 range on non-existent negative values.
 - **Static shapes & VTCM alignment** — HTP requires static shapes. The compiler tiles operations to fit VTCM (4–8MB). If tiles spill to DDR, throughput drops 5–10×.
 - **Custom ops registered correctly** — silent CPU fallback for unregistered ops is a 2–5ms penalty per call × N layers. Always profile to confirm.
 

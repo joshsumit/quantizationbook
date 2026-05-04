@@ -10,15 +10,15 @@ Requantization (or an equivalent domain conversion) is structurally required whe
 
 ## The Requantization Operation
 
-The int32 accumulator holds a value $x_{\text{acc}}$ that represents a real number under the accumulator's scale $S_{\text{acc}}$. The next operator expects int8 inputs under a different scale $S_{\text{out}}$ with zero-point $z_{\text{out}}$. Requantization converts from one domain to the other:
+The int32 accumulator holds a value \\(x_{\text{acc}}\\) that represents a real number under the accumulator's scale \\(S_{\text{acc}}\\). The next operator expects int8 inputs under a different scale \\(S_{\text{out}}\\) with zero-point \\(z_{\text{out}}\\). Requantization converts from one domain to the other:
 
 $$q_{\text{out}} = \text{clamp}\!\left(\left\lfloor \frac{S_{\text{acc}}}{S_{\text{out}}} \cdot x_{\text{acc}} \right\rceil + z_{\text{out}},\; q_{\min},\; q_{\max}\right)$$
 
 Three things happen in sequence:
 
-1. **Rescale**: multiply the int32 value by the ratio $S_{\text{acc}} / S_{\text{out}}$ to convert from one scale to another.
+1. **Rescale**: multiply the int32 value by the ratio \\(S_{\text{acc}} / S_{\text{out}}\\) to convert from one scale to another.
 2. **Round**: the rescaled value is generally not an integer. Round to the nearest integer.
-3. **Clamp**: if the rounded value falls outside the int8 range $[q_{\min}, q_{\max}]$, force it to the boundary.
+3. **Clamp**: if the rounded value falls outside the int8 range \\([q_{\min}, q_{\max}]\\), force it to the boundary.
 
 After this operation, the int32 accumulator is discarded. The int8 result is all that remains.
 
@@ -29,10 +29,10 @@ After this operation, the int32 accumulator is discarded. The int8 result is all
 Continue the three-layer model from Chapter 6: Linear₁ → ReLU → Linear₂.
 
 At Boundary 1 (after Linear₁, before ReLU), suppose:
-- The int32 accumulator holds the value $x_{\text{acc}} = 47{,}382$
-- The accumulator scale is $S_{\text{acc}} = 0.000237$ (product of input scale and weight scale)
-- This accumulator value represents the real number: $47{,}382 \times 0.000237 = 11.23$
-- The output domain expects signed int8 [-128, 127] with scale $S_{\text{out}} = 0.0891$ and $z_{\text{out}} = 0$
+- The int32 accumulator holds the value \\(x_{\text{acc}} = 47{,}382\\)
+- The accumulator scale is \\(S_{\text{acc}} = 0.000237\\) (product of input scale and weight scale)
+- This accumulator value represents the real number: \\(47{,}382 \times 0.000237 = 11.23\\)
+- The output domain expects signed int8 [-128, 127] with scale \\(S_{\text{out}} = 0.0891\\) and \\(z_{\text{out}} = 0\\)
 
 The scale ratio is:
 
@@ -42,25 +42,25 @@ Applying the rescale:
 
 $$0.002661 \times 47{,}382 = 126.09$$
 
-Rounding: $\lfloor 126.09 \rceil = 126$
+Rounding: \\(\lfloor 126.09 \rceil = 126\\)
 
 Clamping: 126 is within [-128, 127]. No clamping needed.
 
-The int8 output is 126, representing real value: $0.0891 \times 126 = 11.23$.
+The int8 output is 126, representing real value: \\(0.0891 \times 126 = 11.23\\).
 
 *Accuracy pattern: Cumulative Rounding Noise — the core mechanism of this chapter.*
 
-In this case, the rounding error is small: the original real value was 11.23, and the dequantized result is also 11.23. But change the accumulator to $x_{\text{acc}} = 47{,}490$:
+In this case, the rounding error is small: the original real value was 11.23, and the dequantized result is also 11.23. But change the accumulator to \\(x_{\text{acc}} = 47{,}490\\):
 
 $$0.002661 \times 47{,}490 = 126.37$$
 
-Rounds to 126 — the same output as before. The original real value was $47{,}490 \times 0.000237 = 11.26$, but the dequantized output is still 11.23. The difference of 0.03 is lost. Two distinct accumulator values — 47,382 and 47,490 — have collapsed to the same int8 output.
+Rounds to 126 — the same output as before. The original real value was \\(47{,}490 \times 0.000237 = 11.26\\), but the dequantized output is still 11.23. The difference of 0.03 is lost. Two distinct accumulator values — 47,382 and 47,490 — have collapsed to the same int8 output.
 
-Now consider a value that exceeds the range. If $x_{\text{acc}} = 50{,}200$:
+Now consider a value that exceeds the range. If \\(x_{\text{acc}} = 50{,}200\\):
 
 $$0.002661 \times 50{,}200 = 133.58$$
 
-Rounds to 134, but the int8 range maxes out at 127. The value is clamped to 127, representing $0.0891 \times 127 = 11.32$. The true value was $50{,}200 \times 0.000237 = 11.90$. The clipping error is $11.90 - 11.32 = 0.58$ — far larger than the rounding error.
+Rounds to 134, but the int8 range maxes out at 127. The value is clamped to 127, representing \\(0.0891 \times 127 = 11.32\\). The true value was \\(50{,}200 \times 0.000237 = 11.90\\). The clipping error is \\(11.90 - 11.32 = 0.58\\) — far larger than the rounding error.
 
 *Accuracy pattern: Tail Clipping — when the rescaled value exceeds the int8 range, the clamp destroys information.*
 
@@ -68,23 +68,23 @@ Rounds to 134, but the int8 range maxes out at 127. The value is clamped to 127,
 
 ## The Scale Ratio Is Approximated in Hardware
 
-The rescale step uses the ratio $S_{\text{acc}} / S_{\text{out}}$. In the mathematical description, this is a floating-point division. Hardware does not implement it that way — hardware lacks fast floating-point division in the integer datapath.
+The rescale step uses the ratio \\(S_{\text{acc}} / S_{\text{out}}\\). In the mathematical description, this is a floating-point division. Hardware does not implement it that way — hardware lacks fast floating-point division in the integer datapath.
 
-The ratio is precomputed at compile time and decomposed into two integers: a multiplier $M$ and a right-shift $n$. The rescale becomes:
+The ratio is precomputed at compile time and decomposed into two integers: a multiplier \\(M\\) and a right-shift \\(n\\). The rescale becomes:
 
 $$q_{\text{out}} = \text{clamp}\!\left(\left\lfloor \frac{M \cdot x_{\text{acc}}}{2^n} \right\rceil + z_{\text{out}}\right)$$
 
 This replaces a floating-point division with an integer multiply and a bit-shift — operations that map directly to fixed-function silicon (Chapter 4).
 
-$M$ is typically a 32-bit integer. $n$ is chosen so that $M / 2^n$ approximates $S_{\text{acc}} / S_{\text{out}}$ as closely as possible. But the approximation is never exact. The realized scale is the nearest value representable as $M / 2^n$, not the true ratio.
+\\(M\\) is typically a 32-bit integer. \\(n\\) is chosen so that \\(M / 2^n\\) approximates \\(S_{\text{acc}} / S_{\text{out}}\\) as closely as possible. But the approximation is never exact. The realized scale is the nearest value representable as \\(M / 2^n\\), not the true ratio.
 
-For the example above: the true ratio is 0.002661. With $n = 31$ and $M = 5{,}718{,}573$:
+For the example above: the true ratio is 0.002661. With \\(n = 31\\) and \\(M = 5{,}718{,}573\\):
 
 $$\frac{5{,}718{,}573}{2^{31}} = \frac{5{,}718{,}573}{2{,}147{,}483{,}648} = 0.0026628...$$
 
-The approximation error is $|0.002661 - 0.002663| = 0.000002$ — seemingly negligible. But this error applies to every value passing through this boundary. In static integer-only inference, the multiplier/shift approximation is fixed at compile time and applies to every value crossing that boundary for every input the model will ever see.
+The approximation error is \\(|0.002661 - 0.002663| = 0.000002\\) — seemingly negligible. But this error applies to every value passing through this boundary. In static integer-only inference, the multiplier/shift approximation is fixed at compile time and applies to every value crossing that boundary for every input the model will ever see.
 
-**Verifying the approximation.** The true ratio is 0.002661. The hardware computes $M / 2^n = 5{,}718{,}573 / 2{,}147{,}483{,}648 = 0.002663$. The relative error is $0.000002 / 0.002661 = 0.075\%$. Applied to the accumulator value 47,382: the true rescaled value is $0.002661 \times 47{,}382 = 126.09$. The hardware computes $0.002663 \times 47{,}382 = 126.18$. Both round to 126 — identical. But at larger accumulator values, the error can push a value across a rounding boundary. At $x_{\text{acc}} = 188{,}000$: true result $= 500.07$, hardware result $= 500.44$ — a 0.37 difference that could round differently. Across a 4096-wide dot product with many such boundaries, the cumulative effect of the $M/2^n$ approximation is typically small but not zero.
+**Verifying the approximation.** The true ratio is 0.002661. The hardware computes \\(M / 2^n = 5{,}718{,}573 / 2{,}147{,}483{,}648 = 0.002663\\). The relative error is \\(0.000002 / 0.002661 = 0.075\%\\). Applied to the accumulator value 47,382: the true rescaled value is \\(0.002661 \times 47{,}382 = 126.09\\). The hardware computes \\(0.002663 \times 47{,}382 = 126.18\\). Both round to 126 — identical. But at larger accumulator values, the error can push a value across a rounding boundary. At \\(x_{\text{acc}} = 188{,}000\\): true result \\(= 500.07\\), hardware result \\(= 500.44\\) — a 0.37 difference that could round differently. Across a 4096-wide dot product with many such boundaries, the cumulative effect of the \\(M/2^n\\) approximation is typically small but not zero.
 
 ---
 
@@ -96,13 +96,13 @@ Consider the three-layer example. At Boundary 1, the accumulator value 47,490 ro
 
 At Boundary 2, the process repeats: the int32 accumulator is rescaled, rounded, and clamped to int8. New rounding error is introduced on top of the error inherited from Boundary 1.
 
-The model has no mechanism to detect that its input was rounded at a previous boundary. It processes whatever values arrive. Error introduced at layer $k$ propagates through all layers $k+1, k+2, \ldots, N$. In a deep network, the earliest requantization errors influence every subsequent computation.
+The model has no mechanism to detect that its input was rounded at a previous boundary. It processes whatever values arrive. Error introduced at layer \\(k\\) propagates through all layers \\(k+1, k+2, \ldots, N\\). In a deep network, the earliest requantization errors influence every subsequent computation.
 
 ### Why Early Layers Hurt More
 
 Not all noise is equal. Error introduced at layer 1 passes through every subsequent layer — it is multiplied by weights, mixed with other errors, and amplified or attenuated by each layer’s Jacobian. Error introduced at the last layer affects only the final output.
 
-Think of it concretely: an error of 0.03 at layer 1 gets multiplied by layer-2 weights ($\approx \pm0.1$ to $\pm0.5$), producing a modified error. That error is then mixed with all other layer-2 errors, summed in a dot product of 4096 terms, and rounded again at the next boundary. By layer 50, the original layer-1 error has been transformed, amplified, and mixed so many times that its effect on the final output can be large or small — but it is present in every subsequent computation. An error at layer 50 never had the chance to propagate.
+Think of it concretely: an error of 0.03 at layer 1 gets multiplied by layer-2 weights (\\(\approx \pm0.1\\) to \\(\pm0.5\\)), producing a modified error. That error is then mixed with all other layer-2 errors, summed in a dot product of 4096 terms, and rounded again at the next boundary. By layer 50, the original layer-1 error has been transformed, amplified, and mixed so many times that its effect on the final output can be large or small — but it is present in every subsequent computation. An error at layer 50 never had the chance to propagate.
 
 Residual connections partially mitigate this: the skip path carries a less-corrupted copy of the signal past the noisy main path. But the mitigation is partial — the merge point (elementwise add) still combines the corrupted and clean signals, and the resulting sum carries error from both branches.
 
@@ -118,9 +118,9 @@ Every residual addition is a site where independently accumulated quantization n
 
 ### Scale Alignment as a Preventive Fix
 
-The residual merging problem has a direct mitigation: *scale alignment*. Instead of letting each branch compute its own optimal scale independently, force both the main branch and the residual branch to share a single $(S, Z)$ pair at the addition node.
+The residual merging problem has a direct mitigation: *scale alignment*. Instead of letting each branch compute its own optimal scale independently, force both the main branch and the residual branch to share a single \\((S, Z)\\) pair at the addition node.
 
-**Worked example: scale mismatch at a residual addition.** Main path output: scale $S_1 = 0.042$, $Z_1 = 5$. Skip path output: scale $S_2 = 0.037$, $Z_2 = -3$. A skip path int8 value of 50 represents real value $0.037 \times (50 - (-3)) = 0.037 \times 53 = 1.961$. To add this in the main path's domain, we need $q_{\text{rescaled}} = \text{round}(1.961 / 0.042) + 5 = \text{round}(46.69) + 5 = 47 + 5 = 52$. The rescaled int8 value 52 represents $0.042 \times (52 - 5) = 1.974$. The true value was 1.961 — the rescaling introduced an error of 0.013. This error is added on top of whatever rounding error the skip path already carried. Scale alignment (forcing $S_1 = S_2$ and $Z_1 = Z_2$) eliminates this rescale step and its error entirely.
+**Worked example: scale mismatch at a residual addition.** Main path output: scale \\(S_1 = 0.042\\), \\(Z_1 = 5\\). Skip path output: scale \\(S_2 = 0.037\\), \\(Z_2 = -3\\). A skip path int8 value of 50 represents real value \\(0.037 \times (50 - (-3)) = 0.037 \times 53 = 1.961\\). To add this in the main path's domain, we need \\(q_{\text{rescaled}} = \text{round}(1.961 / 0.042) + 5 = \text{round}(46.69) + 5 = 47 + 5 = 52\\). The rescaled int8 value 52 represents \\(0.042 \times (52 - 5) = 1.974\\). The true value was 1.961 — the rescaling introduced an error of 0.013. This error is added on top of whatever rounding error the skip path already carried. Scale alignment (forcing \\(S_1 = S_2\\) and \\(Z_1 = Z_2\\)) eliminates this rescale step and its error entirely.
 
 This means one branch — typically the one whose distribution is narrower — uses a scale that is suboptimal for its own range. That branch suffers slightly worse resolution than it would under its own independently computed scale. But the payoff is structural: because both branches share the same scale, the elementwise addition is valid without any rescale insertion. No extra boundary is created. No additional rounding step occurs at the merge point.
 
@@ -141,6 +141,6 @@ When accuracy degrades in a quantized model, the first question is: how many req
 **Diagnostic checklist for requantization-driven accuracy loss:**
 
 1. Count boundaries in the quantized graph (before and after fusion). Each is a noise source.
-2. Check clamp frequency: if many values hit $q_{\min}$ or $q_{\max}$ at any boundary, Tail Clipping dominates — fix calibration or widen the range.
+2. Check clamp frequency: if many values hit \\(q_{\min}\\) or \\(q_{\max}\\) at any boundary, Tail Clipping dominates — fix calibration or widen the range.
 3. At residual additions, check whether branches share a scale or require a rescale insertion. Rescale insertions are extra noise sources.
 4. If the accuracy drop is mostly from rounding noise (gradual, not sharp), QAT (Chapter 11) can shift weight distributions to be robust to these projections.

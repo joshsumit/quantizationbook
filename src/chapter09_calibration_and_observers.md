@@ -70,13 +70,13 @@ The previous section described what an observer *is* — a module attached to a 
 
 ### Min-Max Observer
 
-The simplest observer tracks the absolute minimum and maximum values seen across all calibration inputs. The range is set to $[x_{\min}, x_{\max}]$.
+The simplest observer tracks the absolute minimum and maximum values seen across all calibration inputs. The range is set to \\([x_{\min}, x_{\max}]\\).
 
 Consider a layer's activations across 100 calibration images. Values range from -0.8 to 47.2, but 47.2 occurs in a single image — a single outlier channel activation. Under min-max observation:
 
 $$S = \frac{47.2 - (-0.8)}{255} = \frac{48.0}{255} \approx 0.188$$
 
-The step size is 0.188. But 99.9% of values fall in [-0.8, 3.1] — a range of 3.9 units. That range receives approximately $3.9 / 0.188 \approx 21$ grid points out of 256. The remaining 235 grid points are allocated to the range [3.1, 47.2], where almost no values exist.
+The step size is 0.188. But 99.9% of values fall in [-0.8, 3.1] — a range of 3.9 units. That range receives approximately \\(3.9 / 0.188 \approx 21\\) grid points out of 256. The remaining 235 grid points are allocated to the range [3.1, 47.2], where almost no values exist.
 
 One outlier has set the scale for the entire tensor. The common values — the ones that determine the model's behavior — are represented with ~21 levels instead of ~256. Resolution is destroyed for the majority to accommodate the extreme minority.
 *Accuracy pattern: Observer Misfit — min-max on a long-tailed distribution wastes budget in the empty tail.*
@@ -90,7 +90,7 @@ $$S = \frac{3.1 - (-0.8)}{255} = \frac{3.9}{255} \approx 0.0153$$
 
 Step size is 0.0153 — over 12× finer than the min-max observer. The values in [-0.8, 3.1] now have the full 256 levels of resolution.
 
-The outlier at 47.2 is clipped to 3.1. Its clipping error is $47.2 - 3.1 = 44.1$ — enormous for that one value. But only one value out of hundreds of thousands is affected. The trade-off is explicit: sacrifice one extreme value to preserve resolution for everything else.
+The outlier at 47.2 is clipped to 3.1. Its clipping error is \\(47.2 - 3.1 = 44.1\\) — enormous for that one value. But only one value out of hundreds of thousands is affected. The trade-off is explicit: sacrifice one extreme value to preserve resolution for everything else.
 
 This is the rounding-vs-clipping trade-off from Chapter 5, now as a concrete calibration decision. The percentile observer intentionally accepts a small amount of clipping error to dramatically reduce representation error for the majority.
 
@@ -132,19 +132,19 @@ A calibration dataset that is too small or unrepresentative produces unstable sc
 
 **The variance test:** Run calibration five times, each with a different random subset of the same size (e.g., 128 samples). After each run, record the computed scale at each boundary. Compare the scales across the five runs.
 
-If scales at a given boundary vary by more than 5% across runs, the calibration set is too small — the observer has not converged to a stable estimate. Measure scale variability as $\max(S) / \min(S) - 1$ across the five runs at each boundary.
+If scales at a given boundary vary by more than 5% across runs, the calibration set is too small — the observer has not converged to a stable estimate. Measure scale variability as \\(\max(S) / \min(S) - 1\\) across the five runs at each boundary.
 
-**Worked example.** Five calibration runs at one boundary produce scales: [0.0501, 0.0498, 0.0515, 0.0492, 0.0505]. Variability: $0.0515 / 0.0492 - 1 = 0.047 = 4.7\%$. Below 5%: stable — the calibration dataset is sufficient for this boundary.
+**Worked example.** Five calibration runs at one boundary produce scales: [0.0501, 0.0498, 0.0515, 0.0492, 0.0505]. Variability: \\(0.0515 / 0.0492 - 1 = 0.047 = 4.7\%\\). Below 5%: stable — the calibration dataset is sufficient for this boundary.
 
-Now consider an unstable case: [0.0501, 0.0450, 0.0520, 0.0390, 0.0600]. Variability: $0.0600 / 0.0390 - 1 = 0.538 = 53.8\%$. The scale swings by over 50% depending on which samples are chosen. At $S = 0.060$, int8 code 127 represents $0.060 \times 127 = 7.62$. At $S = 0.039$, code 127 represents $0.039 \times 127 = 4.95$. A 54% scale swing means the clipping boundary shifts from 4.95 to 7.62 — values between 4.95 and 7.62 would be clipped in one run but not another. Diagnosis: calibration dataset too small. Remedy: increase calibration samples until variability drops below 5%.
+Now consider an unstable case: [0.0501, 0.0450, 0.0520, 0.0390, 0.0600]. Variability: \\(0.0600 / 0.0390 - 1 = 0.538 = 53.8\%\\). The scale swings by over 50% depending on which samples are chosen. At \\(S = 0.060\\), int8 code 127 represents \\(0.060 \times 127 = 7.62\\). At \\(S = 0.039\\), code 127 represents \\(0.039 \times 127 = 4.95\\). A 54% scale swing means the clipping boundary shifts from 4.95 to 7.62 — values between 4.95 and 7.62 would be clipped in one run but not another. Diagnosis: calibration dataset too small. Remedy: increase calibration samples until variability drops below 5%.
 
 The 5% threshold is derived from the relationship between scale error and quantization error: a 5% scale error can shift codes by ~13 grid levels near the ends of the int8 range (where code values are largest), enough to move the clipping boundary by several step sizes and cause measurable accuracy degradation. Smaller errors produce proportionally smaller shifts, especially for values near the center of the range. The remedy is straightforward: increase the calibration set until scales stabilize.
 
-**The range exceedance test:** After calibration, run a separate batch of held-out data (not from the calibration set) through the quantized model. At each boundary, track both float-domain exceedance counts (values outside the calibrated range before quantization) and actual int8 saturation frequency (values clamped to $q_{\min}$ or $q_{\max}$ after quantization).
+**The range exceedance test:** After calibration, run a separate batch of held-out data (not from the calibration set) through the quantized model. At each boundary, track both float-domain exceedance counts (values outside the calibrated range before quantization) and actual int8 saturation frequency (values clamped to \\(q_{\min}\\) or \\(q_{\max}\\) after quantization).
 
-**Worked example.** A held-out batch produces 50,000,000 activation values across all boundaries. Exceedance count (values outside calibrated range): 50,045 values. Saturation count (values clamped to ±127 after quantization): 48,932 values. Rates: exceedance = $50{,}045 / 50{,}000{,}000 = 0.10\%$, saturation = $48{,}932 / 50{,}000{,}000 = 0.098\%$. Both below 0.1% — calibration is adequate.
+**Worked example.** A held-out batch produces 50,000,000 activation values across all boundaries. Exceedance count (values outside calibrated range): 50,045 values. Saturation count (values clamped to ±127 after quantization): 48,932 values. Rates: exceedance = \\(50{,}045 / 50{,}000{,}000 = 0.10\%\\), saturation = \\(48{,}932 / 50{,}000{,}000 = 0.098\%\\). Both below 0.1% — calibration is adequate.
 
-If instead: exceedance = 752,000 values (1.5%), saturation = 738,000 (1.48%). The calibration range is too narrow — 1.5% of values are being clipped. At a scale of $S = 0.015$, each clipped value loses at minimum one step (0.015) and potentially much more. Diagnosis: calibration data was unrepresentative (perhaps missing high-dynamic-range inputs), or the observer type is too aggressive (percentile set too tight). Remedy: add more diverse calibration samples, or widen the percentile threshold.
+If instead: exceedance = 752,000 values (1.5%), saturation = 738,000 (1.48%). The calibration range is too narrow — 1.5% of values are being clipped. At a scale of \\(S = 0.015\\), each clipped value loses at minimum one step (0.015) and potentially much more. Diagnosis: calibration data was unrepresentative (perhaps missing high-dynamic-range inputs), or the observer type is too aggressive (percentile set too tight). Remedy: add more diverse calibration samples, or widen the percentile threshold.
 
 If more than 0.1% of values clip (a heuristic threshold — the right number depends on the model and task), the calibration range is too narrow — either the calibration data was unrepresentative, or the observer type is too aggressive (e.g., percentile with too tight a threshold).
 

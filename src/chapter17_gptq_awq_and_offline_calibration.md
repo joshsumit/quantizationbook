@@ -16,7 +16,7 @@ When a single weight is rounded to the nearest grid point, the rounding error fo
 
 $$y = Wx$$
 
-Each output value is a dot product of a weight row with the input $x$. The quantization error in the output depends not on the error of any individual weight, but on the sum of errors weighted by the input values. A small rounding error on a weight that multiplies a large activation contributes more to the output error than a large rounding error on a weight that multiplies a near-zero activation.
+Each output value is a dot product of a weight row with the input \\(x\\). The quantization error in the output depends not on the error of any individual weight, but on the sum of errors weighted by the input values. A small rounding error on a weight that multiplies a large activation contributes more to the output error than a large rounding error on a weight that multiplies a near-zero activation.
 
 Naive rounding ignores this. It minimizes per-weight error, not per-output error. GPTQ and AWQ both minimize per-output error, but through different mechanisms.
 
@@ -28,13 +28,13 @@ GPTQ quantizes weights sequentially, using second-order information from calibra
 
 ### The Optimization Problem
 
-GPTQ solves a specific objective. For a single layer with weight matrix $W$ and calibration inputs $X$, find quantized weights $\hat{W}$ that minimize the *layer reconstruction error*:
+GPTQ solves a specific objective. For a single layer with weight matrix \\(W\\) and calibration inputs \\(X\\), find quantized weights \\(\hat{W}\\) that minimize the *layer reconstruction error*:
 
 $$\min_{\hat{W}} \| WX - \hat{W}X \|_2^2$$
 
-This is not per-weight error ($\|W - \hat{W}\|$) — it is per-*output* error, weighted by the actual inputs the layer sees. A weight that multiplies large activations matters more than one that multiplies near-zero activations.
+This is not per-weight error (\\(\|W - \hat{W}\|\\)) — it is per-*output* error, weighted by the actual inputs the layer sees. A weight that multiplies large activations matters more than one that multiplies near-zero activations.
 
-The Hessian of this objective with respect to the weights is $H = 2XX^T$ — a matrix that captures the second-order sensitivity of the output to each weight. In plain terms: the Hessian tells us how much a small change in each weight affects the output error. A weight that multiplies large activations consistently has a large Hessian value — it is sensitive. A weight that multiplies near-zero activations has a small Hessian value — it is insensitive and can absorb more rounding error. GPTQ uses this sensitivity information to decide where to redistribute the rounding error.
+The Hessian of this objective with respect to the weights is \\(H = 2XX^T\\) — a matrix that captures the second-order sensitivity of the output to each weight. In plain terms: the Hessian tells us how much a small change in each weight affects the output error. A weight that multiplies large activations consistently has a large Hessian value — it is sensitive. A weight that multiplies near-zero activations has a small Hessian value — it is insensitive and can absorb more rounding error. GPTQ uses this sensitivity information to decide where to redistribute the rounding error.
 
 The key approximation: GPTQ processes weights sequentially (often in blocks) rather than jointly optimizing all weights simultaneously. Joint optimization over millions of weights is intractable. The sequential approach, derived from the Optimal Brain Surgeon framework, is an approximation that trades global optimality for tractability — and empirically, the loss is small.
 
@@ -42,30 +42,30 @@ The redistribution uses second-order information from the Hessian, approximated 
 
 ### Concrete example
 
-A row of four weights being quantized to int4 with step size $S = 0.1$:
+A row of four weights being quantized to int4 with step size \\(S = 0.1\\):
 
 | Weight | Float value | Naive int4 | Naive error |
 |---|---|---|---|
-| $w_1$ | 0.37 | 0.4 | +0.03 |
-| $w_2$ | 1.82 | 1.8 | -0.02 |
-| $w_3$ | 0.54 | 0.5 | -0.04 |
-| $w_4$ | -0.28 | -0.3 | -0.02 |
+| \\(w_1\\) | 0.37 | 0.4 | +0.03 |
+| \\(w_2\\) | 1.82 | 1.8 | -0.02 |
+| \\(w_3\\) | 0.54 | 0.5 | -0.04 |
+| \\(w_4\\) | -0.28 | -0.3 | -0.02 |
 
 **Naive rounding:** each weight rounds independently. Total output error = sum of (weight error × input), uncontrolled.
 
-**GPTQ:** $w_1$ rounds to 0.4 (error = +0.03). The Hessian indicates $w_2$ is the least sensitive to adjustment. GPTQ adjusts $w_2$'s float value from 1.82 to $1.82 - 0.03 \times h_{12}/h_{22} = 1.84$ (where $h_{ij}$ are Hessian entries) before rounding it. $w_2$ now rounds to 1.8 from 1.84 instead of 1.82 — a slightly different rounding, but one that compensates for $w_1$'s error in the output.
+**GPTQ:** \\(w_1\\) rounds to 0.4 (error = +0.03). The Hessian indicates \\(w_2\\) is the least sensitive to adjustment. GPTQ adjusts \\(w_2\\)'s float value from 1.82 to \\(1.82 - 0.03 \times h_{12}/h_{22} = 1.84\\) (where \\(h_{ij}\\) are Hessian entries) before rounding it. \\(w_2\\) now rounds to 1.8 from 1.84 instead of 1.82 — a slightly different rounding, but one that compensates for \\(w_1\\)'s error in the output.
 
-**Detailed walkthrough with calibration inputs.** Suppose calibration produces average input $x = [2.5, 1.0, 0.3, 1.8]$. The target output for this row:
+**Detailed walkthrough with calibration inputs.** Suppose calibration produces average input \\(x = [2.5, 1.0, 0.3, 1.8]\\). The target output for this row:
 
 $$y_{\text{float}} = 0.37 \times 2.5 + 1.82 \times 1.0 + 0.54 \times 0.3 + (-0.28) \times 1.8 = 0.925 + 1.82 + 0.162 - 0.504 = 2.403$$
 
-Naive rounding: $y_{\text{naive}} = 0.4 \times 2.5 + 1.8 \times 1.0 + 0.5 \times 0.3 + (-0.3) \times 1.8 = 1.0 + 1.8 + 0.15 - 0.54 = 2.41$. Error: $|2.403 - 2.41| = 0.007$.
+Naive rounding: \\(y_{\text{naive}} = 0.4 \times 2.5 + 1.8 \times 1.0 + 0.5 \times 0.3 + (-0.3) \times 1.8 = 1.0 + 1.8 + 0.15 - 0.54 = 2.41\\). Error: \\(|2.403 - 2.41| = 0.007\\).
 
-GPTQ processes $w_1$ first. Error = +0.03. The Hessian $H = 2XX^T$ tells us $w_2$ has the lowest sensitivity. GPTQ adjusts $w_2$: $1.82 - 0.03 \times (2.5 \times 1.0) / (1.0^2) = 1.82 - 0.075 = 1.745$. Rounds to 1.7. Then $w_3$: adjusted from 0.54 by the accumulated residual, rounds to 0.5. Then $w_4$: adjusted from -0.28, rounds to -0.3.
+GPTQ processes \\(w_1\\) first. Error = +0.03. The Hessian \\(H = 2XX^T\\) tells us \\(w_2\\) has the lowest sensitivity. GPTQ adjusts \\(w_2\\): \\(1.82 - 0.03 \times (2.5 \times 1.0) / (1.0^2) = 1.82 - 0.075 = 1.745\\). Rounds to 1.7. Then \\(w_3\\): adjusted from 0.54 by the accumulated residual, rounds to 0.5. Then \\(w_4\\): adjusted from -0.28, rounds to -0.3.
 
-GPTQ output: $0.4 \times 2.5 + 1.7 \times 1.0 + 0.5 \times 0.3 + (-0.3) \times 1.8 = 1.0 + 1.7 + 0.15 - 0.54 = 2.31$. Error: $|2.403 - 2.31| = 0.093$.
+GPTQ output: \\(0.4 \times 2.5 + 1.7 \times 1.0 + 0.5 \times 0.3 + (-0.3) \times 1.8 = 1.0 + 1.7 + 0.15 - 0.54 = 2.31\\). Error: \\(|2.403 - 2.31| = 0.093\\).
 
-In this toy example, GPTQ is worse — the redistribution pushed $w_2$ too far. But across thousands of output rows and realistic 4096-wide dot products, the Hessian-guided redistribution statistically produces lower total reconstruction error than naive rounding. The benefit emerges in aggregate, not in any single row.
+In this toy example, GPTQ is worse — the redistribution pushed \\(w_2\\) too far. But across thousands of output rows and realistic 4096-wide dot products, the Hessian-guided redistribution statistically produces lower total reconstruction error than naive rounding. The benefit emerges in aggregate, not in any single row.
 
 The process continues left to right. Each weight's rounding error is distributed to subsequent weights. By the end of the row, the total output error is significantly smaller than naive rounding — even though individual weight errors may be larger.
 
@@ -79,13 +79,13 @@ AWQ takes a different approach. Instead of redistributing error after rounding, 
 
 ### The Optimization Problem
 
-AWQ solves a different objective from GPTQ. Instead of optimizing the quantized values directly, it optimizes *per-channel scaling factors* $s$ applied before quantization:
+AWQ solves a different objective from GPTQ. Instead of optimizing the quantized values directly, it optimizes *per-channel scaling factors* \\(s\\) applied before quantization:
 
 $$\min_{s} \| WX - Q(s \cdot W) \cdot (X / s) \|_2^2$$
 
-where $Q(\cdot)$ is the quantization function (round to nearest grid point) and the scaling/division is per-channel. The key insight: scaling a weight channel by $s > 1$ before quantization gives it more grid resolution in its important range, at the cost of the corresponding activation channel being divided by $s$.
+where \\(Q(\cdot)\\) is the quantization function (round to nearest grid point) and the scaling/division is per-channel. The key insight: scaling a weight channel by \\(s > 1\\) before quantization gives it more grid resolution in its important range, at the cost of the corresponding activation channel being divided by \\(s\\).
 
-AWQ approximates this by defining channel saliency as the average activation magnitude: $\text{saliency}_k = \mathbb{E}[|x_k|]$, measured over the calibration dataset. High-saliency channels get larger scaling factors. Unlike GPTQ's sequential Hessian-based approach, AWQ's scaling is largely saliency-driven with lightweight tuning — no iterative weight adjustment is needed, making it substantially cheaper to run.
+AWQ approximates this by defining channel saliency as the average activation magnitude: \\(\text{saliency}_k = \mathbb{E}[|x_k|]\\), measured over the calibration dataset. High-saliency channels get larger scaling factors. Unlike GPTQ's sequential Hessian-based approach, AWQ's scaling is largely saliency-driven with lightweight tuning — no iterative weight adjustment is needed, making it substantially cheaper to run.
 
 The key observation: not all weight channels contribute equally to the output. Channels that are consistently multiplied by large activations have a disproportionate effect. A small quantization error in a salient channel causes more output degradation than a large error in a non-salient channel.
 
@@ -93,24 +93,24 @@ AWQ uses a calibration dataset to measure activation magnitudes and identify sal
 
 **Worked example: AWQ saliency-driven scaling.** A layer with 4 input channels. Calibration dataset (100 samples) produces mean activation magnitudes:
 
-| Channel | Mean $|x|$ | Saliency rank | AWQ scale $\beta$ |
+| Channel | Mean \\(|x|\\) | Saliency rank | AWQ scale \\(\beta\\) |
 |---|---|---|---|
 | 0 | 0.5 | 3rd | 0.8 |
 | 1 | 3.2 | 1st (most salient) | 2.0 |
 | 2 | 0.1 | 4th | 0.3 |
 | 3 | 0.8 | 2nd | 1.2 |
 
-Channel 1 (saliency rank 1) gets $\beta = 2.0$: its weights are multiplied by 2.0 before quantization. With int4 step size 0.067, channel 1’s effective step size becomes $0.067 / 2.0 = 0.034$ — 2× finer precision for the most important channel. Channel 2 ($\beta = 0.3$): effective step size $= 0.067 / 0.3 = 0.223$ — 3× coarser, but channel 2 contributes little to the output (mean activation 0.1). The net output error decreases because precision is allocated proportionally to each channel’s contribution.
+Channel 1 (saliency rank 1) gets \\(\beta = 2.0\\): its weights are multiplied by 2.0 before quantization. With int4 step size 0.067, channel 1’s effective step size becomes \\(0.067 / 2.0 = 0.034\\) — 2× finer precision for the most important channel. Channel 2 (\\(\beta = 0.3\\)): effective step size \\(= 0.067 / 0.3 = 0.223\\) — 3× coarser, but channel 2 contributes little to the output (mean activation 0.1). The net output error decreases because precision is allocated proportionally to each channel’s contribution.
 
 This is conceptually related to SmoothQuant (Chapter 15), but the goal is different. SmoothQuant smooths activation outliers to make activations quantizable. AWQ protects salient weight channels to make weight quantization more accurate. Note that AWQ's scaling is per weight *input* channel and compensation is on the corresponding activation channel — distinct from per-output-channel quantization scales.
 
 ### How it works
 
-Suppose channel $k$ has high saliency (large activation magnitudes). AWQ scales $W_k$ by a factor $\beta > 1$ before quantization:
+Suppose channel \\(k\\) has high saliency (large activation magnitudes). AWQ scales \\(W_k\\) by a factor \\(\beta > 1\\) before quantization:
 
 $$\tilde{W}_k = \beta \cdot W_k$$
 
-After quantization, the dequantized weight $\hat{W}_k$ has smaller relative error because the scaling placed the weights in a region of the grid with better resolution relative to their original magnitude. The output is compensated by dividing the input:
+After quantization, the dequantized weight \\(\hat{W}_k\\) has smaller relative error because the scaling placed the weights in a region of the grid with better resolution relative to their original magnitude. The output is compensated by dividing the input:
 
 $$y = \hat{W} \cdot (x / \beta_{\text{per-channel}})$$
 
@@ -181,7 +181,7 @@ These algorithms operate within the framework established throughout this book. 
 
 Weight-only quantization requires a *dequantization kernel* that converts int4 weights to float16 before the matrix multiply. This kernel is not free.
 
-For each group of $g$ weights, the kernel must: load the packed int4 data, unpack each 4-bit value from its packed byte, load the group's scale (and zero-point if asymmetric), multiply each value by the scale and add the offset, and write the float16 result to registers or shared memory.
+For each group of \\(g\\) weights, the kernel must: load the packed int4 data, unpack each 4-bit value from its packed byte, load the group's scale (and zero-point if asymmetric), multiply each value by the scale and add the offset, and write the float16 result to registers or shared memory.
 
 On modern GPUs, this dequantization runs concurrently with compute — the memory bandwidth for loading int4 weights is the bottleneck, and the dequantization arithmetic fits in the gaps. But on less capable hardware — mobile GPUs, NPUs, older data center GPUs — the dequantization kernel can become a compute bottleneck, partially or fully canceling the bandwidth savings.
 
@@ -191,11 +191,11 @@ A practical rule of thumb (must be profiled per target): if the dequantization k
 
 **Worked example: dequantization overhead.** For a [4096 × 4096] matmul with int4 weights and group size 128:
 
-- Weight data: $4096 \times 4096 \times 0.5 = 8.35$ MB. At 2 TB/s bandwidth: load time $\approx 4.2$ µs.
-- Scale metadata: 131,072 scales × 2 bytes = 0.26 MB. Load time $\approx 0.13$ µs.
+- Weight data: \\(4096 \times 4096 \times 0.5 = 8.35\\) MB. At 2 TB/s bandwidth: load time \\(\approx 4.2\\) µs.
+- Scale metadata: 131,072 scales × 2 bytes = 0.26 MB. Load time \\(\approx 0.13\\) µs.
 - Dequant kernel (unpack 4-bit, multiply by scale, store float16): ~8–12 µs (hardware-dependent, includes unpacking and scale lookups every 128 weights).
 - Float16 matmul: ~25 µs.
-- Total: ~37–41 µs. Dequant fraction: $10 / 39 \approx 26\%$.
+- Total: ~37–41 µs. Dequant fraction: \\(10 / 39 \approx 26\%\\).
 
 At 26%, dequantization is above the 20% threshold — the bandwidth savings from int4 are being partially eaten by decompression. On a faster GPU with better dequant fusion, this drops to ~15%. On a weaker GPU, it can reach 40%. Profile before committing to a group size.
 

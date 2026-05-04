@@ -12,7 +12,7 @@ Quantization replaces dense 32-bit values with coarser 8-bit or 4-bit representa
 
 ## The Bottleneck Is Not Compute
 
-A modern GPU or accelerator can execute trillions of arithmetic operations per second — we measure this in TFLOP/s (tera-floating-point operations per second, i.e. $10^{12}$ operations per second). Raw multiplication throughput is rarely the limiting factor during inference. The bottleneck is getting data to the compute units fast enough to keep them busy.
+A modern GPU or accelerator can execute trillions of arithmetic operations per second — we measure this in TFLOP/s (tera-floating-point operations per second, i.e. \\(10^{12}\\) operations per second). Raw multiplication throughput is rarely the limiting factor during inference. The bottleneck is getting data to the compute units fast enough to keep them busy.
 
 When the processor spends most of its time *waiting for data* rather than computing, we call this *memory-bandwidth-bound*. The opposite — when data arrives fast enough and compute is the bottleneck — is called *compute-bound*. For large deployed models, especially at low batch sizes, the dominant limiter is memory traffic. In some regimes — small models, large batches, strong cache reuse — inference can be compute-bound, but these are the exception not the rule.
 

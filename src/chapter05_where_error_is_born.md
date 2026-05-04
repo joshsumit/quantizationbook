@@ -37,7 +37,7 @@ Rounding error is the cost of operating on a grid. It cannot be eliminated, but 
 
 ### Quantizing the Noise: A First-Order Model
 
-Rounding error can be modeled as additive noise. When a value $r$ is quantized, the result is $\hat{r} = r + \epsilon$, where $\epsilon$ is the rounding error. If $r$ is not systematically aligned with the grid — a safe assumption for neural network values — then $\epsilon$ behaves approximately as a *uniform random variable* on $[-S/2, +S/2]$.
+Rounding error can be modeled as additive noise. When a value \\(r\\) is quantized, the result is \\(\hat{r} = r + \epsilon\\), where \\(\epsilon\\) is the rounding error. If \\(r\\) is not systematically aligned with the grid — a safe assumption for neural network values — then \\(\epsilon\\) behaves approximately as a *uniform random variable* on \\([-S/2, +S/2]\\).
 
 The variance of this noise is:
 
@@ -45,26 +45,26 @@ $$\text{Var}(\epsilon) = \frac{S^2}{12}$$
 
 This is the classical quantization noise formula from signal processing, and it applies directly to neural network quantization. It gives a concrete tool for estimating error magnitude:
 
-- For int8 over range [-1, 1]: $S = 0.00784$, so $\text{Var}(\epsilon) = 5.12 \times 10^{-6}$, standard deviation $\sigma \approx 0.0023$.
-- For int4 over the same range: $S = 0.133$, so $\text{Var}(\epsilon) = 1.48 \times 10^{-3}$, standard deviation $\sigma \approx 0.038$ — roughly 17× larger.
+- For int8 over range [-1, 1]: \\(S = 0.00784\\), so \\(\text{Var}(\epsilon) = 5.12 \times 10^{-6}\\), standard deviation \\(\sigma \approx 0.0023\\).
+- For int4 over the same range: \\(S = 0.133\\), so \\(\text{Var}(\epsilon) = 1.48 \times 10^{-3}\\), standard deviation \\(\sigma \approx 0.038\\) — roughly 17× larger.
 
-For a dot product of $N$ independently quantized values (as in a single output of a linear layer), the output noise variance is approximately:
+For a dot product of \\(N\\) independently quantized values (as in a single output of a linear layer), the output noise variance is approximately:
 
 $$\text{Var}(\epsilon_{\text{output}}) \approx N \times \text{Var}(\epsilon_w) \times \mathbb{E}[x^2] + N \times \text{Var}(\epsilon_x) \times \mathbb{E}[w^2]$$
 
-where $\epsilon_w$ and $\epsilon_x$ are the weight and activation rounding errors respectively. The output noise grows linearly with the dot-product width $N$ — a 4096-wide dot product accumulates 4096× more noise variance than a single multiplication.
+where \\(\epsilon_w\\) and \\(\epsilon_x\\) are the weight and activation rounding errors respectively. The output noise grows linearly with the dot-product width \\(N\\) — a 4096-wide dot product accumulates 4096× more noise variance than a single multiplication.
 
-**Worked example: noise growth across dot-product widths.** Using the int8 values above ($S = 0.00784$, $\sigma = 0.0023$ per value):
+**Worked example: noise growth across dot-product widths.** Using the int8 values above (\\(S = 0.00784\\), \\(\sigma = 0.0023\\) per value):
 
-| Dot-product width $N$ | Accumulated $\text{Var}$ | Accumulated $\sigma$ |
+| Dot-product width \\(N\\) | Accumulated \\(\text{Var}\\) | Accumulated \\(\sigma\\) |
 |---|---|---|
-| 1 | $5.12 \times 10^{-6}$ | 0.0023 |
-| 64 | $3.28 \times 10^{-4}$ | 0.018 |
-| 512 | $2.62 \times 10^{-3}$ | 0.051 |
-| 1024 | $5.24 \times 10^{-3}$ | 0.072 |
-| 4096 | $2.10 \times 10^{-2}$ | 0.145 |
+| 1 | \\(5.12 \times 10^{-6}\\) | 0.0023 |
+| 64 | \\(3.28 \times 10^{-4}\\) | 0.018 |
+| 512 | \\(2.62 \times 10^{-3}\\) | 0.051 |
+| 1024 | \\(5.24 \times 10^{-3}\\) | 0.072 |
+| 4096 | \\(2.10 \times 10^{-2}\\) | 0.145 |
 
-(Assuming $\mathbb{E}[x^2] \approx 1.0$ and only weight quantization noise for simplicity.)
+(Assuming \\(\mathbb{E}[x^2] \approx 1.0\\) and only weight quantization noise for simplicity.)
 
 A single quantized value has noise std 0.0023. After a 4096-wide dot product, the output noise std grows to 0.145 — over 60× larger. For a layer whose output values are typically in the range [-1, 1], a noise std of 0.145 means quantization noise is ~15% of the signal — no longer negligible. This is why wider layers in large models are more sensitive to quantization than narrow layers.
 
@@ -72,7 +72,7 @@ A single quantized value has noise std 0.0023. After a 4096-wide dot product, th
 
 The word "noise" invites a misconception. In other machine learning contexts, noise is sometimes injected deliberately — as regularization, as data augmentation, or as a source of stochasticity. Quantization noise is none of those things.
 
-Quantization noise is a *measurement of damage*. When a value $r$ becomes $\hat{r} = r + \epsilon$, the $\epsilon$ is not stored, not fed into another module, and not corrected later. It is baked into the output — permanently and invisibly. At inference time, the quantized model simply runs; there is no mechanism that detects or compensates for the accumulated error.
+Quantization noise is a *measurement of damage*. When a value \\(r\\) becomes \\(\hat{r} = r + \epsilon\\), the \\(\epsilon\\) is not stored, not fed into another module, and not corrected later. It is baked into the output — permanently and invisibly. At inference time, the quantized model simply runs; there is no mechanism that detects or compensates for the accumulated error.
 
 So what is this noise actually *used for*? Not by the model — by the engineer. Quantization noise is an engineering diagnostic:
 
@@ -80,11 +80,11 @@ So what is this noise actually *used for*? Not by the model — by the engineer.
 - **To choose scales and formats.** Calibration (Chapter 9) runs candidate configurations and compares the noise they produce — per-tensor vs per-channel, symmetric vs asymmetric, percentile vs min-max. The configuration with less noise wins.
 - **To predict accuracy drop before deployment.** Metrics like signal-to-quantization-noise ratio (SQNR) or per-layer activation MSE let you estimate accuracy degradation without deploying the model.
 
-  **SQNR worked example.** For the int8 case with $\sigma_{\text{noise}} = 0.0023$ and a signal with std $\sigma_{\text{signal}} = 0.2$:
+  **SQNR worked example.** For the int8 case with \\(\sigma_{\text{noise}} = 0.0023\\) and a signal with std \\(\sigma_{\text{signal}} = 0.2\\):
 
   $$\text{SQNR} = 20 \log_{10}\!\left(\frac{0.2}{0.0023}\right) = 20 \log_{10}(87.0) = 20 \times 1.939 = 38.8 \text{ dB}$$
 
-  For int4 with $\sigma_{\text{noise}} = 0.038$:
+  For int4 with \\(\sigma_{\text{noise}} = 0.038\\):
 
   $$\text{SQNR} = 20 \log_{10}\!\left(\frac{0.2}{0.038}\right) = 20 \log_{10}(5.26) = 20 \times 0.721 = 14.4 \text{ dB}$$
 
@@ -97,9 +97,9 @@ The one-sentence version: *we observe quantization noise to decide how far we ca
 **When this model breaks.** The uniform noise assumption requires that values are not aligned with the grid. It holds well for weights (which are continuous-valued after training) and for activations in intermediate layers. It breaks in two cases:
 
 1. **After QAT** (Chapter 11): weights cluster near grid points, so rounding errors are systematically near zero — the noise is no longer uniformly distributed.
-2. **Across layers**: the rounding error at layer $k$ becomes part of the input to layer $k+1$. The error and the signal are no longer independent. The simple variance-addition model underestimates cumulative error in deep networks because it ignores correlation between layers.
+2. **Across layers**: the rounding error at layer \\(k\\) becomes part of the input to layer \\(k+1\\). The error and the signal are no longer independent. The simple variance-addition model underestimates cumulative error in deep networks because it ignores correlation between layers.
 
-The $S^2/12$ model is a first-order estimate — useful for comparing quantization configurations (int8 vs int4, per-tensor vs per-channel) and for sanity-checking whether observed accuracy drops are consistent with expected noise levels. It is not a precise predictor for deep networks, where error propagation across dozens of layers introduces correlations that the independent-noise assumption cannot capture.
+The \\(S^2/12\\) model is a first-order estimate — useful for comparing quantization configurations (int8 vs int4, per-tensor vs per-channel) and for sanity-checking whether observed accuracy drops are consistent with expected noise levels. It is not a precise predictor for deep networks, where error propagation across dozens of layers introduces correlations that the independent-noise assumption cannot capture.
 
 > **📊 INSERT DIAGRAM: Error Propagation Through a Multi-Layer Pipeline**
 >
@@ -127,7 +127,7 @@ The $S^2/12$ model is a first-order estimate — useful for comparing quantizati
 
 ## Clipping Error
 
-Clipping error occurs when a real value falls outside the representable range entirely. The quantization grid covers $[r_{\min}, r_{\max}]$. Any value beyond this range is clamped — forced to the nearest boundary value.
+Clipping error occurs when a real value falls outside the representable range entirely. The quantization grid covers \\([r_{\min}, r_{\max}]\\). Any value beyond this range is clamped — forced to the nearest boundary value.
 
 Using the same range [-1.0, 1.0]: the value 1.7 lies outside the grid. It is clamped to 1.0. The error is:
 
@@ -152,10 +152,10 @@ The quantization grid is uniform — grid points are evenly spaced across the en
 Consider a layer where 95% of activations fall in [-0.1, 0.1] and the remaining 5% are spread across [-1.0, -0.1] and [0.1, 1.0]. Under int8 quantization of the full range [-1.0, 1.0]:
 
 - The entire range gets 256 grid points with step size 0.00784.
-- The dense region [-0.1, 0.1] spans 0.2 units of range. It receives approximately $0.2 / 0.00784 \approx 26$ grid points.
+- The dense region [-0.1, 0.1] spans 0.2 units of range. It receives approximately \\(0.2 / 0.00784 \approx 26\\) grid points.
 - 95% of the values must be represented using 26 out of 256 levels. The remaining 230 grid points cover regions with almost no data.
 
-No individual value is clipped. No individual rounding error exceeds $S/2$. Yet the quantized representation is spending 90% of its budget on regions where almost nothing exists, and only 10% on the region where the data actually lives. If the model's behavior depends on fine distinctions within [-0.1, 0.1] — and it often does, since these are the values near zero where ReLU activations transition and small differences determine network behavior — then 26 levels may be too coarse.
+No individual value is clipped. No individual rounding error exceeds \\(S/2\\). Yet the quantized representation is spending 90% of its budget on regions where almost nothing exists, and only 10% on the region where the data actually lives. If the model's behavior depends on fine distinctions within [-0.1, 0.1] — and it often does, since these are the values near zero where ReLU activations transition and small differences determine network behavior — then 26 levels may be too coarse.
 
 Representation error is not about any one value being wrong. It is about the grid being poorly matched to the distribution it represents.
 
@@ -169,7 +169,7 @@ These three error types have different causes, different magnitudes, and differe
 
 | Error Type | Cause | Bounded? | Remedy Direction |
 |---|---|---|---|
-| Rounding | Value falls between grid points | Yes, by $S/2$ | Use more bits (finer grid) |
+| Rounding | Value falls between grid points | Yes, by \\(S/2\\) | Use more bits (finer grid) |
 | Clipping | Value falls outside the range | No — grows with distance | Widen the range (at the cost of resolution) |
 | Representation | Uniform grid mismatches non-uniform distribution | Not directly | Adjust range or use non-uniform quantization |
 

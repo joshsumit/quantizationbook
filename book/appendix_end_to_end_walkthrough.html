@@ -167,9 +167,9 @@
 <li><strong>Layer 2:</strong> Linear(8 → 8) + ReLU</li>
 <li><strong>Layer 3:</strong> Linear(8 → 2) (output logits)</li>
 </ul>
-<p>Total parameters: $(4 \times 8 + 8) + (8 \times 8 + 8) + (8 \times 2 + 2) = 40 + 72 + 18 = 130$ weights and biases.</p>
-<p>Float32 model size: $130 \times 4 = 520$ bytes.
-Int8 model size (weights only): $130 \times 1 + \text{scales} \approx 140$ bytes.</p>
+<p>Total parameters: \((4 \times 8 + 8) + (8 \times 8 + 8) + (8 \times 2 + 2) = 40 + 72 + 18 = 130\) weights and biases.</p>
+<p>Float32 model size: \(130 \times 4 = 520\) bytes.
+Int8 model size (weights only): \(130 \times 1 + \text{scales} \approx 140\) bytes.</p>
 <p>(We ignore scale/zero-point metadata and packing overhead for simplicity. In this toy model, metadata is a handful of bytes; in real models it is a small fraction of weight data — see Chapter 16.)</p>
 <hr />
 <h2 id="step-1-calibrate"><a class="header" href="#step-1-calibrate">Step 1: Calibrate</a></h2>
@@ -192,20 +192,20 @@ Int8 model size (weights only): $130 \times 1 + \text{scales} \approx 140$ bytes
 <h2 id="step-2-compute-scales-and-zero-points"><a class="header" href="#step-2-compute-scales-and-zero-points">Step 2: Compute Scales and Zero-Points</a></h2>
 <p>Using asymmetric uint8 quantization for activations (post-ReLU values are non-negative) and symmetric int8 for weights:</p>
 <p><strong>Activation scales:</strong></p>
-<div class="table-wrapper"><table><thead><tr><th>Boundary</th><th>$S_{\text{act}}$</th><th>$Z_{\text{act}}$</th></tr></thead><tbody>
-<tr><td>B1</td><td>$3.42 / 255 = 0.01341$</td><td>0 (min is 0.0)</td></tr>
-<tr><td>B2</td><td>$5.17 / 255 = 0.02027$</td><td>0</td></tr>
-<tr><td>B3</td><td>$7.44 / 255 = 0.02918$</td><td>$\text{round}(2.83 / 0.02918) = 97$</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Boundary</th><th>\(S_{\text{act}}\)</th><th>\(Z_{\text{act}}\)</th></tr></thead><tbody>
+<tr><td>B1</td><td>\(3.42 / 255 = 0.01341\)</td><td>0 (min is 0.0)</td></tr>
+<tr><td>B2</td><td>\(5.17 / 255 = 0.02027\)</td><td>0</td></tr>
+<tr><td>B3</td><td>\(7.44 / 255 = 0.02918\)</td><td>\(\text{round}(2.83 / 0.02918) = 97\)</td></tr>
 </tbody></table>
 </div>
-<p><strong>Weight scales (symmetric, $Z = 0$):</strong></p>
-<div class="table-wrapper"><table><thead><tr><th>Layer</th><th>$S_w$</th><th>$S_{\text{acc}} = S_w \times S_{\text{input}}$</th></tr></thead><tbody>
-<tr><td>W1</td><td>$0.71 / 127 = 0.005591$</td><td>$0.005591 \times 0.01 = 0.00005591$ (input scale assumed 0.01)</td></tr>
-<tr><td>W2</td><td>$0.53 / 127 = 0.004173$</td><td>$0.004173 \times 0.01341 = 0.00005598$</td></tr>
-<tr><td>W3</td><td>$0.81 / 127 = 0.006378$</td><td>$0.006378 \times 0.02027 = 0.0001293$</td></tr>
+<p><strong>Weight scales (symmetric, \(Z = 0\)):</strong></p>
+<div class="table-wrapper"><table><thead><tr><th>Layer</th><th>\(S_w\)</th><th>\(S_{\text{acc}} = S_w \times S_{\text{input}}\)</th></tr></thead><tbody>
+<tr><td>W1</td><td>\(0.71 / 127 = 0.005591\)</td><td>\(0.005591 \times 0.01 = 0.00005591\) (input scale assumed 0.01)</td></tr>
+<tr><td>W2</td><td>\(0.53 / 127 = 0.004173\)</td><td>\(0.004173 \times 0.01341 = 0.00005598\)</td></tr>
+<tr><td>W3</td><td>\(0.81 / 127 = 0.006378\)</td><td>\(0.006378 \times 0.02027 = 0.0001293\)</td></tr>
 </tbody></table>
 </div>
-<p><em>Output artifact: quantization parameter table $(S, Z)$ for every activation boundary and weight layer.</em></p>
+<p><em>Output artifact: quantization parameter table \((S, Z)\) for every activation boundary and weight layer.</em></p>
 <hr />
 <h2 id="step-3-count-boundaries"><a class="header" href="#step-3-count-boundaries">Step 3: Count Boundaries</a></h2>
 <p>Trace the data flow through the quantized graph:</p>
@@ -220,32 +220,32 @@ Int8 model size (weights only): $130 \times 1 + \text{scales} \approx 140$ bytes
 <p><em>Output artifact: a boundary ledger listing B0–B3 with their locations and scales.</em></p>
 <hr />
 <h2 id="step-4-predict-error"><a class="header" href="#step-4-predict-error">Step 4: Predict Error</a></h2>
-<p>Using the noise model from Chapter 5 ($\text{Var}(\epsilon) = S^2/12$):</p>
+<p>Using the noise model from Chapter 5 (\(\text{Var}(\epsilon) = S^2/12\)):</p>
 <p><strong>Per-boundary rounding noise variance:</strong></p>
-<div class="table-wrapper"><table><thead><tr><th>Boundary</th><th>Scale $S$</th><th>$\text{Var}(\epsilon)$</th><th>$\sigma$</th></tr></thead><tbody>
-<tr><td>B0 (input)</td><td>assume 0.01</td><td>$8.33 \times 10^{-6}$</td><td>0.0029</td></tr>
-<tr><td>B1</td><td>0.01341</td><td>$1.50 \times 10^{-5}$</td><td>0.0039</td></tr>
-<tr><td>B2</td><td>0.02027</td><td>$3.42 \times 10^{-5}$</td><td>0.0059</td></tr>
-<tr><td>B3</td><td>0.02918</td><td>$7.10 \times 10^{-5}$</td><td>0.0084</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Boundary</th><th>Scale \(S\)</th><th>\(\text{Var}(\epsilon)\)</th><th>\(\sigma\)</th></tr></thead><tbody>
+<tr><td>B0 (input)</td><td>assume 0.01</td><td>\(8.33 \times 10^{-6}\)</td><td>0.0029</td></tr>
+<tr><td>B1</td><td>0.01341</td><td>\(1.50 \times 10^{-5}\)</td><td>0.0039</td></tr>
+<tr><td>B2</td><td>0.02027</td><td>\(3.42 \times 10^{-5}\)</td><td>0.0059</td></tr>
+<tr><td>B3</td><td>0.02918</td><td>\(7.10 \times 10^{-5}\)</td><td>0.0084</td></tr>
 </tbody></table>
 </div>
 <p><strong>Layer 2 output noise estimate:</strong></p>
-<p>Layer 2 has a dot product of width $N = 8$. The output noise from weight quantization alone:</p>
+<p>Layer 2 has a dot product of width \(N = 8\). The output noise from weight quantization alone:</p>
 <p>$$\text{Var}(\epsilon_{\text{L2}}) \approx N \times \frac{S_w^2}{12} \times \mathbb{E}[x^2]$$</p>
-<p>With $S_w = 0.004173$, $N = 8$, and $\mathbb{E}[x^2] \approx 1.0$ (typical for post-ReLU activations in this range):</p>
+<p>With \(S_w = 0.004173\), \(N = 8\), and \(\mathbb{E}[x^2] \approx 1.0\) (typical for post-ReLU activations in this range):</p>
 <p>$$\text{Var}(\epsilon_{\text{L2}}) \approx 8 \times \frac{0.004173^2}{12} \times 1.0 = 8 \times 1.45 \times 10^{-6} = 1.16 \times 10^{-5}$$</p>
-<p>This noise then passes through Boundary 2's requantization, adding its own $\text{Var} = 3.42 \times 10^{-5}$.</p>
+<p>This noise then passes through Boundary 2's requantization, adding its own \(\text{Var} = 3.42 \times 10^{-5}\).</p>
 <p><strong>Cumulative noise at the output (rough estimate):</strong></p>
 <p>The noise from each boundary compounds through subsequent layers. A conservative upper bound: sum the variances at each boundary (ignoring amplification by weights, which can increase or decrease the noise depending on weight magnitudes):</p>
 <p>$$\text{Var}_{\text{total}} \approx 8.33 \times 10^{-6} + 1.50 \times 10^{-5} + 3.42 \times 10^{-5} + 7.10 \times 10^{-5} \approx 1.29 \times 10^{-4}$$</p>
 <p>$$\sigma_{\text{total}} \approx 0.0114$$</p>
 <p>For output logits with a typical range of [-2.83, 4.61] (7.44 units), a noise standard deviation of 0.011 is roughly 0.15% of the range. This is small — a classification task should tolerate this level of noise without significant accuracy loss.</p>
-<p><em>Output artifact: variance ledger per boundary + cumulative $\sigma_{\text{total}}$.</em></p>
+<p><em>Output artifact: variance ledger per boundary + cumulative \(\sigma_{\text{total}}\).</em></p>
 <hr />
 <h2 id="step-5-compare-prediction-with-reality"><a class="header" href="#step-5-compare-prediction-with-reality">Step 5: Compare Prediction with Reality</a></h2>
 <p>Run the same 64 calibration inputs through both the float32 and int8 models. Measure the actual output differences:</p>
 <div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Predicted</th><th>Observed (typical)</th></tr></thead><tbody>
-<tr><td>Output noise $\sigma$</td><td>0.011</td><td>0.008 – 0.015</td></tr>
+<tr><td>Output noise \(\sigma\)</td><td>0.011</td><td>0.008 – 0.015</td></tr>
 <tr><td>Max output deviation</td><td>~3σ ≈ 0.034</td><td>0.02 – 0.04</td></tr>
 <tr><td>Classification accuracy drop</td><td>&lt; 0.5%</td><td>0.1 – 0.3%</td></tr>
 </tbody></table>
@@ -258,22 +258,22 @@ Int8 model size (weights only): $130 \times 1 + \text{scales} \approx 140$ bytes
 </ul>
 <p><strong>Sanity checks:</strong></p>
 <ul>
-<li>All zero-points are within [0, 255]: $z_{B1}=0$, $z_{B2}=0$, $z_{B3}=97$. ✓</li>
+<li>All zero-points are within [0, 255]: \(z_{B1}=0\), \(z_{B2}=0\), \(z_{B3}=97\). ✓</li>
 <li>Clamp rate during calibration is ~0% (no values outside observed range by definition). ✓</li>
-<li>Predicted $\sigma$ (0.011) roughly matches observed range (0.008–0.015). ✓</li>
+<li>Predicted \(\sigma\) (0.011) roughly matches observed range (0.008–0.015). ✓</li>
 </ul>
 <p><em>Output artifact: measured diff table + sanity check confirmation.</em></p>
 <hr />
 <h2 id="step-6-what-if-it-had-failed"><a class="header" href="#step-6-what-if-it-had-failed">Step 6: What If It Had Failed?</a></h2>
 <p>Suppose this model had an outlier problem. If Layer 1's activations had a single channel reaching 50.0 (instead of 3.42), the min-max scale would be:</p>
 <p>$$S_{\text{B1}} = 50.0 / 255 = 0.196$$</p>
-<p>The noise variance at B1 jumps to $0.196^2 / 12 = 0.0032$ — a 213× increase. The output noise $\sigma$ would rise from 0.011 to approximately 0.057, and the classification accuracy drop would be 3–5%.</p>
+<p>The noise variance at B1 jumps to \(0.196^2 / 12 = 0.0032\) — a 213× increase. The output noise \(\sigma\) would rise from 0.011 to approximately 0.057, and the classification accuracy drop would be 3–5%.</p>
 <p><strong>Diagnosis using Chapter 13's order:</strong></p>
 <ol>
 <li>Graph boundaries: 4, as expected. ✓</li>
 <li>Silent fallbacks: none (all ops are linear + ReLU). ✓</li>
 <li>Scale alignment: no elementwise ops, no mismatch. ✓</li>
-<li>Calibration: check the 99th-percentile-to-max ratio. Here: $3.1 / 50.0 = 0.062$. Ratio is 16:1 — well above the 10:1 outlier explosion threshold. <strong>Diagnosis: Outlier Explosion (Pattern 1).</strong></li>
+<li>Calibration: check the 99th-percentile-to-max ratio. Here: \(3.1 / 50.0 = 0.062\). Ratio is 16:1 — well above the 10:1 outlier explosion threshold. <strong>Diagnosis: Outlier Explosion (Pattern 1).</strong></li>
 <li>Fix: switch to percentile observer. Set range to [-0.0, 3.1]. The outlier clips, but 99.99% of values get full resolution.</li>
 </ol>
 <p><em>Canonical category: Distribution Mismatch / Budget Waste, manifesting as Outlier Explosion (Pattern 1, Chapter 13).</em></p>
@@ -283,9 +283,9 @@ Int8 model size (weights only): $130 \times 1 + \text{scales} \approx 140$ bytes
 <p>This walkthrough composed every major concept:</p>
 <div class="table-wrapper"><table><thead><tr><th>Step</th><th>Concept</th><th>Chapter</th></tr></thead><tbody>
 <tr><td>Calibrate</td><td>Observers collect activation ranges</td><td>9</td></tr>
-<tr><td>Compute scales</td><td>$S = \text{range} / (q_{\max} - q_{\min})$</td><td>3</td></tr>
+<tr><td>Compute scales</td><td>\(S = \text{range} / (q_{\max} - q_{\min})\)</td><td>3</td></tr>
 <tr><td>Count boundaries</td><td>int32 → int8 at each layer output</td><td>6, 7</td></tr>
-<tr><td>Predict error</td><td>$\text{Var}(\epsilon) = S^2/12$, accumulates across boundaries</td><td>5, 7</td></tr>
+<tr><td>Predict error</td><td>\(\text{Var}(\epsilon) = S^2/12\), accumulates across boundaries</td><td>5, 7</td></tr>
 <tr><td>Diagnose failure</td><td>Check graph → fallbacks → alignment → calibration → sensitivity</td><td>13</td></tr>
 <tr><td>Fix</td><td>Percentile observer, SmoothQuant, mixed precision, or don't quantize</td><td>9, 15, 12, 13</td></tr>
 </tbody></table>
