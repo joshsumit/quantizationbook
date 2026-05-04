@@ -1,0 +1,411 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Failure Patterns - Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A Practitioner&#x27;s Guide to Model Compression for Real Hardware">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+        <!-- MathJax -->
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="chapter-13-failure-patterns"><a class="header" href="#chapter-13-failure-patterns">Chapter 13: Failure Patterns</a></h1>
+<h2 id="a-diagnostic-atlas"><a class="header" href="#a-diagnostic-atlas">A Diagnostic Atlas</a></h2>
+<p>The complete quantization machinery is now in place: the representational grid, the scale contract, hardware constraints, three error types, graph boundaries, requantization, fusion, calibration, and three quantization strategies.</p>
+<p>It is now possible to diagnose quantization failures systematically. Before examining the individual failure patterns, here is the diagnostic order — the sequence in which to investigate when a quantized model misbehaves:</p>
+<blockquote>
+<p><strong>📊 INSERT DIAGRAM: Quantization Failure Diagnostic Flowchart</strong></p>
+<p>A top-down decision tree for diagnosing a failing quantized model:</p>
+<pre><code>Quantized model underperforming?
+  │
+  ├─ Is it SLOWER than float? (throughput problem)
+  │     ├─ Check backend logs for dequant pairs → Silent Fallback (Pattern 3)
+  │     └─ Check kernel profiler for unfused ops → Fusion Loss (Ch.8)
+  │
+  └─ Is it LESS ACCURATE? (quality problem)
+        │
+        ├─ Uniform degradation across all inputs?
+        │     ├─ Check activation histograms for outlier channels → Outlier Explosion (Pattern 1)
+        │     └─ Check per-layer sensitivity → Resolution Collapse / Scale Mismatch (Pattern 5)
+        │
+        ├─ Degradation only on production data (not calibration)?
+        │     └─ Calibration Drift (Pattern 4)
+        │
+        ├─ Depth-dependent degradation (deeper = worse)?
+        │     └─ Residual Ghost (Pattern 2) — check scale alignment at skip connections
+        │
+        └─ Nothing works (PTQ, QAT, all fail)?
+              └─ Unquantizable Model (Pattern 6) — raise precision floor
+</code></pre>
+<p>Annotate: "Start with structural/throughput checks (cheap and fast) before diving into accuracy diagnosis (requires profiling and sensitivity sweeps)."</p>
+</blockquote>
+<hr />
+<h2 id="diagnostic-order"><a class="header" href="#diagnostic-order">Diagnostic Order</a></h2>
+<p>When accuracy drops after quantization and the cause is not obvious, check in this order:</p>
+<ol>
+<li><strong>Graph boundaries</strong>: Count the boundaries in the fused graph. Are there more than the layer count would predict? Export the post-fusion execution graph and count requant/rescale nodes. (Chapters 6, 8)</li>
+<li><strong>Silent fallbacks</strong>: Verify every operation executes in int8 on the target backend. Confirm kernel coverage via backend logs or profiler; search for unexpected dequantize/requantize pairs. (Chapter 4)</li>
+<li><strong>Scale alignment</strong>: At every elementwise operation, check whether input scales match. Record domain parameters at each elementwise op and count inserted rescale operations. (Chapter 8)</li>
+<li><strong>Calibration</strong>: Compare calibration data statistics against production data statistics. Compare exceedance and saturation rates between calibration and production. (Chapter 9)</li>
+<li><strong>Per-layer sensitivity</strong>: If the above checks pass, identify which specific layers contribute most to the accuracy drop. Sweep precision per-layer or disable quantization per-layer to compute each layer's contribution. (Chapter 12)</li>
+</ol>
+<p>This order prioritizes structural problems (wrong graph, wrong backend support) before statistical problems (wrong calibration) before layer-level problems (individual layer sensitivity). Structural problems are cheap to check and have outsized impact. Calibration issues are next. Per-layer debugging is the most expensive and is a last resort.</p>
+<p>Each of the five patterns below maps to one or more of these checkpoints. Use the order above as a triage sequence, and the patterns below as a reference for identifying and naming what you find.</p>
+<hr />
+<h2 id="pattern-1-outlier-explosion"><a class="header" href="#pattern-1-outlier-explosion">Pattern 1: Outlier Explosion</a></h2>
+<p><em>Canonical category: Distribution Mismatch / Budget Waste; Tail Clipping when outliers are clamped.</em></p>
+<p><strong>Symptom:</strong> Accuracy degrades uniformly across the model. No single layer appears broken, but every layer is slightly worse. Output quality drops in a way that feels like resolution loss rather than catastrophic failure.</p>
+<p><strong>Root cause:</strong> A few extreme values in the activation or weight distribution force the scale wide, destroying resolution for the majority of values. This is representation error (Chapter 5) caused by a range set too wide to accommodate outliers.</p>
+<p><strong>Mechanism:</strong> Consider a layer where 99.9% of activations fall in [-1.0, 3.0] but one channel produces values reaching 50.0. If the observer uses min-max (Chapter 9), the scale is set for [-1.0, 50.0] — a range of 51 units. The step size is $51/255 \approx 0.20$. Values in the common range [-1.0, 3.0] get approximately 20 grid points. The layer effectively operates at 4–5 bit resolution instead of 8 bit.</p>
+<p><strong>Diagnostic question:</strong> What is the ratio between the 99.9th percentile and the maximum activation value? The <em>99.9th percentile</em> (written p99.9) is the value below which 99.9% of observations fall — it is robust to single extreme outliers. A p99.9/max ratio below 0.1 (i.e., the maximum is more than 10× the 99.9th percentile) strongly suggests outlier explosion.</p>
+<p><strong>Fix / Mitigation:</strong></p>
+<ul>
+<li>Switch the min–max observer to a percentile or histogram observer (Chapter 9) — this trades a small amount of clipping for much better resolution in the common range.</li>
+<li>Use per-channel quantization for weights; per-group for activations if the backend supports it.</li>
+<li>Apply outlier-handling transforms that redistribute outlier magnitude across channels (Chapter 15).</li>
+<li>If outliers are concentrated in a few layers, keep those layers in higher precision (mixed precision, Chapter 12).</li>
+</ul>
+<hr />
+<h2 id="pattern-2-residual-ghost"><a class="header" href="#pattern-2-residual-ghost">Pattern 2: Residual Ghost</a></h2>
+<p><em>Canonical category: Cumulative Rounding Noise; may trigger Distribution Mismatch at scale alignment and Fusion Loss at inserted rescale boundaries.</em></p>
+<p><strong>Symptom:</strong> Accuracy degrades specifically in architectures with skip connections. The model performs worse on tasks that depend on fine-grained features, while coarse predictions remain roughly intact. The degradation scales with network depth.</p>
+<p><strong>Root cause:</strong> The main branch and the residual branch are independently requantized with different scale parameters. When they merge at the elementwise addition, their rounding errors combine (Chapter 7). If the scales are mismatched, a rescale insertion adds another boundary (Chapter 8), injecting additional error at every skip connection.</p>
+<p><strong>Mechanism:</strong> In a ResNet with 25 residual blocks, each block contributes one error-merging site. If the main and residual paths have mismatched scales, each merge point also contributes a rescale boundary. Over 25 blocks, the accumulated error from independently quantized paths reshapes the representation — particularly in the higher layers where the model relies on subtle activation differences.</p>
+<p><strong>Worked example: how small errors amplify through depth.</strong> Consider a 4-layer network where each layer multiplies its input by a weight matrix (simplified as a scalar multiplier $m$ for illustration).</p>
+<ul>
+<li>Layer 1 receives input $x = 1.000$, multiplier $m_1 = 1.5$. Quantization introduces error $\epsilon_1 = 0.004$.
+<ul>
+<li>Output: $1.5 \times 1.000 + 0.004 = 1.504$ (true: 1.500).</li>
+</ul>
+</li>
+<li>Layer 2 receives 1.504, multiplier $m_2 = 2.0$. Adds its own error $\epsilon_2 = 0.003$.
+<ul>
+<li>Output: $2.0 \times 1.504 + 0.003 = 3.011$ (true: $2.0 \times 1.500 = 3.000$). Cumulative error: 0.011.</li>
+</ul>
+</li>
+<li>Layer 3 receives 3.011, multiplier $m_3 = 1.8$. Adds $\epsilon_3 = 0.005$.
+<ul>
+<li>Output: $1.8 \times 3.011 + 0.005 = 5.425$ (true: $1.8 \times 3.000 = 5.400$). Cumulative error: 0.025.</li>
+</ul>
+</li>
+<li>Layer 4 receives 5.425, multiplier $m_4 = 2.5$. Adds $\epsilon_4 = 0.004$.
+<ul>
+<li>Output: $2.5 \times 5.425 + 0.004 = 13.567$ (true: $2.5 \times 5.400 = 13.500$). Cumulative error: <strong>0.067</strong>.</li>
+</ul>
+</li>
+</ul>
+<p>Each layer's individual error is tiny (0.003–0.005). But Layer 1's error of 0.004 was multiplied by $m_2 \times m_3 \times m_4 = 2.0 \times 1.8 \times 2.5 = 9.0$, contributing 0.036 to the final error alone. The errors don't just add — they get <em>amplified</em> by every subsequent layer's weights. This is why residual-ghost failures scale with depth, and why early layers are more sensitive: their errors pass through more amplification stages.</p>
+<p><strong>Diagnostic question:</strong> At each residual addition, do the main and residual paths share the same $(S, Z)$? How many rescale insertions exist in the fused graph?</p>
+<p><strong>Fix / Mitigation:</strong></p>
+<ul>
+<li>Enforce scale alignment at residual merge points (compiler or quantizer pass) so both branches share the same output domain.</li>
+<li>Fuse where possible to reduce independent requantization events before the merge.</li>
+<li>If alignment widens the range too much, move the merge to higher precision (mixed precision localized to merge sites, Chapter 12).</li>
+<li>Use QAT to train robustness specifically to merge-point quantization noise (Chapter 11).</li>
+</ul>
+<hr />
+<h2 id="pattern-3-silent-fallback"><a class="header" href="#pattern-3-silent-fallback">Pattern 3: Silent Fallback</a></h2>
+<p><em>Canonical category: Silent Fallback (runtime pattern); causes boundary explosion and throughput collapse.</em></p>
+<p><strong>Symptom:</strong> The quantized model runs slower than expected. In some cases, it is slower than the floating-point original. Accuracy may be fine — the failure is in throughput.</p>
+<p><strong>Root cause:</strong> One or more operations are not supported by the hardware's int8 capability envelope (Chapter 4). These operations silently fall back to float32, incurring dequantize-compute-requantize overhead at each fallback boundary.</p>
+<p><strong>Mechanism:</strong> A model uses GELU activation, which is not in the int8 capability envelope of the target backend. At each GELU layer, the runtime dequantizes int8 to float32, computes GELU in float, and requantizes back to int8. Each fallback adds two memory-format conversions and two requantization boundaries. If GELU appears after every linear layer in a 24-layer transformer, that is 48 additional boundaries and 48 additional memory round trips — none of which were in the quantization plan.</p>
+<p><strong>Concrete latency cost.</strong> For a [1, 4096] activation tensor in int8 (4 KB), each fallback boundary requires: dequantize int8 → float32 (4 KB → 16 KB, kernel launch ~5 µs), GELU compute in float32 (~20 µs), requantize float32 → int8 (16 KB → 4 KB, ~5 µs). Per-layer fallback cost: ~30 µs. If the fused int8 Linear-ReLU alternative takes ~25 µs for compute, the GELU fallback adds 5 µs overhead per layer. Across 24 layers: $24 \times 5 = 120$ µs extra per inference. For a model that should complete inference in 2 ms, this is a 6% slowdown from a single unsupported activation function — and the model appears fully quantized in the graph.</p>
+<p>The model appears quantized. The weights are int8. But the critical path runs through float operations surrounded by conversions, and the net effect is worse than running the entire model in float.</p>
+<p><strong>Diagnostic question:</strong> Does every operation in the graph execute in int8 on the target backend? Are there any dequantize/requantize pairs that were not present in the original quantized graph?</p>
+<p><strong>Fix / Mitigation:</strong></p>
+<ul>
+<li>Replace unsupported ops with backend-friendly approximations or fused variants (e.g., GELU approximations, or SiLU if supported).</li>
+<li>Re-export the graph with fusion-friendly patterns (Conv/Linear + activation fused before quantization).</li>
+<li>Verify backend kernel selection via logs or profiler and block deployment if any float fallback appears in the critical path.</li>
+</ul>
+<hr />
+<h2 id="pattern-4-calibration-drift"><a class="header" href="#pattern-4-calibration-drift">Pattern 4: Calibration Drift</a></h2>
+<p><em>Canonical category: Calibration Mismatch (initial mismatch) and Calibration Drift (time-varying subtype); often leads to Tail Clipping downstream.</em></p>
+<p><strong>Symptom:</strong> The quantized model passes validation with acceptable accuracy but degrades on production data. The degradation may appear gradually as production data distribution shifts, or it may be immediate if the calibration data was fundamentally unrepresentative.</p>
+<p><strong>Root cause:</strong> The calibration dataset (Chapter 9) does not match the deployment distribution. The computed scales and zero-points are correct for the calibration data but wrong for the data the model actually encounters.</p>
+<p><strong>Mechanism:</strong> A speech recognition model is calibrated on clean studio-recorded audio. In production, it encounters noisy phone recordings with higher dynamic range. Activation values regularly exceed the calibrated range, causing clipping at every affected layer. The model was never calibrated for this input distribution, and the immutability of the parameters (Chapter 3) means the wrong ranges persist for every inference.</p>
+<p><strong>Diagnostic question:</strong> Was the calibration data drawn from the same distribution as production data? Do production activation ranges exceed the calibrated ranges?</p>
+<p><strong>Fix / Mitigation:</strong></p>
+<ul>
+<li>Expand calibration dataset coverage to include production segments; stratify by known regimes (noise levels, device types, data sources).</li>
+<li>Track saturation rate and range exceedance in production telemetry — this is the actionable invariant.</li>
+<li>When drift is expected: consider dynamic quantization for activations or periodic recalibration (Chapter 12).</li>
+</ul>
+<hr />
+<h2 id="pattern-5-scale-mismatch-at-boundaries"><a class="header" href="#pattern-5-scale-mismatch-at-boundaries">Pattern 5: Scale Mismatch at Boundaries</a></h2>
+<p><em>Canonical category: Cumulative Rounding Noise (from extra boundaries); may trigger Fusion Loss and Silent Fallback at inserted rescale ops.</em></p>
+<p><strong>Symptom:</strong> Unexpected additional requantization boundaries appear in the execution graph — more than the layer count would predict. Latency is higher than expected, and accuracy drops are concentrated at specific points in the graph.</p>
+<p><strong>Root cause:</strong> Elementwise operations (add, concat) with inputs from branches that have different scales force rescale insertions (Chapter 8). Each insertion adds a requantization boundary that was not in the original plan.</p>
+<p><strong>Mechanism:</strong> A model with a feature pyramid network concatenates feature maps from different stages. Each stage has been quantized with different scales. The concatenation requires all inputs to share one $(S, Z)$. Rescale operations are inserted on two of the three input branches, adding two boundaries at each pyramid level. Across four pyramid levels, eight additional boundaries appear — each introducing rounding error.</p>
+<p><strong>Diagnostic question:</strong> At each elementwise operation, do all inputs share the same $(S, Z)$? How many rescale insertions does the fused graph contain?</p>
+<p><strong>Fix / Mitigation:</strong></p>
+<ul>
+<li>Force shared domain for branches feeding elementwise ops (alignment pass in the quantizer).</li>
+<li>Restructure the graph to move concatenation or addition to a point where domains already match (common graph rewrite).</li>
+<li>Fuse rescale into producer epilogues where possible to avoid extra materialization.</li>
+</ul>
+<hr />
+<h2 id="conceptual-consolidation"><a class="header" href="#conceptual-consolidation">Conceptual Consolidation</a></h2>
+<p>Quantization failures have names. Outlier explosion, residual ghost, silent fallback, calibration drift, and scale mismatch are not exotic edge cases — they are the standard failure modes that account for the vast majority of quantization accuracy and performance regressions.</p>
+<p>When a quantized model misbehaves, the question is not "why did quantization fail?" It is: which specific pattern is this, and which invariant from the foundational chapters was violated? The answer determines the fix.</p>
+<p><strong>Pattern interactions.</strong> These patterns are not independent. Fixing Outlier Explosion by widening the observer range can worsen Resolution Collapse in normal-range layers. Aligning scales at residual merges (fixing Residual Ghost) can widen the shared domain and introduce Budget Waste. Adding rescale ops to fix Scale Mismatch adds boundaries that create Fusion Loss. Effective quantization debugging means monitoring for secondary patterns introduced by each fix.</p>
+<hr />
+<h2 id="pattern-6-the-unquantizable-model"><a class="header" href="#pattern-6-the-unquantizable-model">Pattern 6: The Unquantizable Model</a></h2>
+<p><em>Canonical category: Resolution Collapse (dominant); may also involve Silent Fallback and capability envelope limits.</em></p>
+<p>Not every quantization failure has a fix. Sometimes the correct diagnosis is: <em>do not quantize this model below a certain precision without architectural change.</em></p>
+<p><strong>Canonical example:</strong> A small language model (350M parameters) with:</p>
+<ul>
+<li>LayerNorm before every attention block (producing activation outliers per Chapter 14)</li>
+<li>GELU activations throughout (outside the int8 capability envelope on most backends)</li>
+<li>No grouped-query attention (full KV-heads, maximizing the KV-cache cost)</li>
+<li>Narrow hidden dimension (1024) — meaning each dot product has only 1024 terms, giving less averaging to smooth out per-weight quantization error</li>
+</ul>
+<p>Quantization results (illustrative numbers):</p>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Precision</th><th>Accuracy Drop</th><th>Outcome</th></tr></thead><tbody>
+<tr><td>PTQ</td><td>int8</td><td>12%</td><td>Collapse</td></tr>
+<tr><td>PTQ + percentile observer</td><td>int8</td><td>8%</td><td>Still unacceptable</td></tr>
+<tr><td>SmoothQuant + PTQ</td><td>int8</td><td>5%</td><td>Better but still degraded</td></tr>
+<tr><td>QAT</td><td>int8</td><td>1.5%</td><td>Acceptable — but QAT cost 3 GPU-days</td></tr>
+<tr><td>PTQ</td><td>int4</td><td>38%</td><td>Total collapse</td></tr>
+<tr><td>GPTQ</td><td>int4</td><td>18%</td><td>Still incoherent</td></tr>
+<tr><td>AWQ</td><td>int4</td><td>15%</td><td>Marginally better, still broken</td></tr>
+</tbody></table>
+</div>
+<p><strong>The diagnosis:</strong> At 350M parameters, the model is too small for aggressive quantization. Its representations are already compact — there is less redundancy for quantization to exploit. Each weight carries more information per parameter than in a 70B model (a heuristic, not a theorem — architecture matters as much as size), so the same per-weight error has a larger relative impact.</p>
+<p><strong>The correct answer:</strong> Do not quantize this model below int8 without QAT. And do not quantize to int4 at all — at some point the precision floor is reached; beyond it, even advanced methods cannot reliably recover accuracy for a model this compact.</p>
+<p><strong>The signal to look for:</strong> When <em>every</em> quantization approach at a given precision produces unacceptable accuracy drops, the model is telling you that the precision floor has been reached. The fix is not a better algorithm — it is a different precision or a different (larger) model whose representations are more redundant and therefore more compressible.</p>
+<p><strong>Fix / Mitigation:</strong></p>
+<ul>
+<li>Raise precision (int8 instead of int4), or use mixed precision on the most sensitive blocks (Chapter 12).</li>
+<li>Consider architectural changes: replace ops that produce structural outliers, adjust hidden dimension for better quantization headroom.</li>
+<li>If economics allow, use QAT — as the table above shows, it can recover int8 accuracy at the cost of training compute (Chapter 11).</li>
+</ul>
+<hr />
+<h2 id="the-standard-model-vs-the-transformer-reality"><a class="header" href="#the-standard-model-vs-the-transformer-reality">The Standard Model vs. The Transformer Reality</a></h2>
+<p>The five failure patterns above — and the diagnostic machinery that identifies them — were developed against convolutional networks and feedforward architectures. These models have smooth activation distributions, bounded value ranges, and well-behaved weight statistics. The quantization framework from Chapters 1–12 handles them well, and the failure patterns above capture the standard ways things go wrong.</p>
+<p>Transformers rewrite the rules. Large language models and vision transformers produce activation distributions with <em>structural</em> outliers — not random extremes, but specific channels that consistently fire at 30–100× the magnitude of their neighbors. These outliers are not noise to be clipped or calibrated around. They are a fundamental property of the architecture.</p>
+<p>The standard observer (Chapter 9) cannot fix this — no choice of percentile eliminates outliers that are structurally necessary. PTQ (Chapter 10) collapses entirely. QAT (Chapter 11) is theoretically possible but economically prohibitive for 70-billion-parameter models. The diagnostic patterns above still apply, but the dominant failure mode in transformers — outlier explosion at architectural scale — requires a different class of solutions entirely.</p>
+<p>The next four chapters explore this frontier: why transformers break (Chapter 14), how to redistribute outlier difficulty (Chapter 15), why quantizing only weights changes the game (Chapter 16), and how to choose weight values more intelligently than naive rounding (Chapter 17).</p>
+<hr />
+<h2 id="pattern-index"><a class="header" href="#pattern-index">Pattern Index</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Pattern</th><th>Symptom Type</th><th>What to Inspect</th><th>Primary Fix Lever</th></tr></thead><tbody>
+<tr><td>Outlier Explosion</td><td>Accuracy (uniform degradation)</td><td>Activation histograms, p99.9/max ratio</td><td>Observer choice, per-channel/groupwise, outlier transforms (Ch.15)</td></tr>
+<tr><td>Residual Ghost</td><td>Accuracy (depth-scaled, fine features)</td><td>Scale params at merge points, rescale count</td><td>Scale alignment, fusion, merge-point mixed precision (Ch.7, Ch.8)</td></tr>
+<tr><td>Silent Fallback</td><td>Throughput (slower than float)</td><td>Backend logs, kernel profiler, dequant pairs</td><td>Op replacement, fusion-friendly export, backend verification (Ch.4)</td></tr>
+<tr><td>Calibration Drift</td><td>Accuracy (production-only)</td><td>Range exceedance, saturation telemetry</td><td>Calibration coverage, dynamic quant (Ch.12), recalibration (Ch.9)</td></tr>
+<tr><td>Scale Mismatch</td><td>Accuracy + latency (at boundaries)</td><td>Domain params at elementwise ops, rescale count</td><td>Domain alignment, graph restructuring, epilogue fusion (Ch.8)</td></tr>
+<tr><td>Unquantizable Model</td><td>Accuracy (all methods fail)</td><td>Per-layer sensitivity sweep, precision floor</td><td>Raise precision, mixed precision (Ch.12), QAT (Ch.11), architectural change</td></tr>
+</tbody></table>
+</div>
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="chapter12_dynamic_and_mixed_precision.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="chapter14_why_transformers_break_quantization.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="chapter12_dynamic_and_mixed_precision.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="chapter14_why_transformers_break_quantization.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

@@ -1,6 +1,6 @@
 # Chapter 3: Scale and Zero-Point
 
-> **Notation used in this chapter:** $r$ denotes a real floating-point value; $q$ denotes a quantized integer; $S$ (scale) is the real-valued width of one quantization step; $Z$ (zero-point) is the integer that represents real zero; $q_{\min}$ and $q_{\max}$ are the integer endpoints (e.g., 0 and 255 for uint8, or -128 and 127 for int8).
+> **Notation used in this chapter:** $r$ denotes a real floating-point value; $q$ denotes a quantized integer; $S$ (scale) is the real-valued width of one quantization step; $Z$ (zero-point) is the integer that represents real zero; $$q_{\min}$$ and $$q_{\max}$$ are the integer endpoints (e.g., 0 and 255 for uint8, or -128 and 127 for int8).
 
 ## The Mapping Problem
 

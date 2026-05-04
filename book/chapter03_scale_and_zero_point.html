@@ -1,0 +1,334 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Scale and Zero-Point - Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A Practitioner&#x27;s Guide to Model Compression for Real Hardware">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+        <!-- MathJax -->
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="chapter-3-scale-and-zero-point"><a class="header" href="#chapter-3-scale-and-zero-point">Chapter 3: Scale and Zero-Point</a></h1>
+<blockquote>
+<p><strong>Notation used in this chapter:</strong> $r$ denotes a real floating-point value; $q$ denotes a quantized integer; $S$ (scale) is the real-valued width of one quantization step; $Z$ (zero-point) is the integer that represents real zero; $$q_{\min}$$ and $$q_{\max}$$ are the integer endpoints (e.g., 0 and 255 for uint8, or -128 and 127 for int8).</p>
+</blockquote>
+<h2 id="the-mapping-problem"><a class="header" href="#the-mapping-problem">The Mapping Problem</a></h2>
+<p>A quantization grid provides a fixed number of integer levels spanning a range. But a question remains unanswered. Given a range of real values — say, activations that fall between -2.3 and 5.1 — and 256 integers (0 through 255), how do you decide which integer represents which real value?</p>
+<p>Two things must be determined. First, how wide each step on the grid is — this controls the spacing between representable values. Second, where the grid sits relative to real zero — this controls which real value maps to which integer.</p>
+<p>These two quantities are called <em>scale</em> and <em>zero-point</em>. Together they fully define the mapping between real numbers and quantized integers. Once set, they become permanent. Every subsequent computation in the quantized model depends on their exact values.</p>
+<hr />
+<h2 id="scale"><a class="header" href="#scale">Scale</a></h2>
+<p>Scale ($S$) is the real-valued width of one quantization step — the distance between two adjacent representable values. It is the step size from Chapter 2 made precise.</p>
+<p>Given a real-valued range $[r_{\min}, r_{\max}]$ and an integer range $[q_{\min}, q_{\max}]$:</p>
+<p>$$S = \frac{r_{\max} - r_{\min}}{q_{\max} - q_{\min}}$$</p>
+<p>For activations in [-2.3, 5.1] mapped to uint8 [0, 255]:</p>
+<p>$$S = \frac{5.1 - (-2.3)}{255 - 0} = \frac{7.4}{255} \approx 0.02902$$</p>
+<p>Each integer step corresponds to a real-valued increment of 0.02902. A smaller scale means finer resolution but a narrower range. A larger scale means coarser resolution but a wider range. This is the range–precision trade-off from Chapter 2, now expressed as a single number.</p>
+<hr />
+<h2 id="zero-point"><a class="header" href="#zero-point">Zero-Point</a></h2>
+<p>The scale determines spacing, but not position. A grid with step size 0.02902 could start anywhere on the real number line. Zero-point ($Z$) anchors the grid by specifying which integer represents real zero.</p>
+<p>$$Z = \text{round}!\left(\frac{-r_{\min}}{S}\right) = \text{round}!\left(\frac{2.3}{0.02902}\right) = \text{round}(79.26) = 79$$</p>
+<p>We use round-to-nearest (not floor or ceil) because it minimizes the error in representing zero: 79.26 is closer to 79 than to 80, so rounding to 79 gives the smallest zero-point error.</p>
+<p>Integer 79 represents real zero. Integers below 79 represent negative real values. Integers above 79 represent positive real values. The grid is now positioned.</p>
+<hr />
+<h2 id="the-full-mapping"><a class="header" href="#the-full-mapping">The Full Mapping</a></h2>
+<p>With $S$ and $Z$ determined, the mapping from real values to integers and back is:</p>
+<p><strong>Quantize</strong> (real → integer):</p>
+<p>$$q = \text{clamp}!\left(q_{\min},; q_{\max},; \text{round}!\left(\frac{r}{S}\right) + Z\right)$$</p>
+<p>The $\text{clamp}(a, b, x)$ function means: if $x &lt; a$, return $a$; if $x &gt; b$, return $b$; otherwise return $x$. It ensures values outside the calibrated range saturate to the nearest endpoint rather than overflowing. All examples in this chapter use round-to-nearest (ties to even), the default rounding mode in most quantization toolkits.</p>
+<p><strong>Dequantize</strong> (integer → real):</p>
+<p>$$r = S \cdot (q - Z)$$</p>
+<p>Walking through concrete values for the range [-2.3, 5.1] with $S = 0.02902$ and $Z = 79$:</p>
+<p><strong>Real value 0.0:</strong>
+$$q = \text{round}(0.0 / 0.02902) + 79 = 0 + 79 = 79$$</p>
+<p>Dequantized: $0.02902 \times (79 - 79) = 0.0$. Zero maps to integer 79 and reconstructs exactly. No error.</p>
+<p><strong>Real value 3.7:</strong>
+$$q = \text{round}(3.7 / 0.02902) + 79 = \text{round}(127.5) + 79 = 128 + 79 = 207$$</p>
+<p>Dequantized: $0.02902 \times (207 - 79) = 0.02902 \times 128 = 3.715$. The original value was 3.7; the reconstructed value is 3.715. The difference — 0.015 — is the rounding error for this specific value, well within one step size of 0.029.</p>
+<p><strong>Real value -2.3:</strong>
+$$q = \text{round}(-2.3 / 0.02902) + 79 = \text{round}(-79.26) + 79 = -79 + 79 = 0$$</p>
+<p>Dequantized: $0.02902 \times (0 - 79) = -2.292$. The boundary value reconstructs with a small rounding error of 0.008.</p>
+<hr />
+<h2 id="invariant-zero-must-be-exactly-representable"><a class="header" href="#invariant-zero-must-be-exactly-representable">Invariant: Zero Must Be Exactly Representable</a></h2>
+<p>In the example above, real 0.0 mapped to integer 79 and dequantized back to exactly 0.0. This is not a coincidence — it is a requirement.</p>
+<p>If real zero does not map to an exact integer, systematic offsets appear throughout the computation:</p>
+<p><strong>Multiplication by zero produces nonzero results.</strong> Consider multiplying an activation by a weight that should be zero. In float32, the result is exactly zero. If the quantized representation of zero is actually 0.003 (because zero falls between two grid points), every "zero" multiplication produces 0.003 instead. Across thousands of such operations in a single layer, these phantom values accumulate.</p>
+<p><strong>ReLU boundaries shift.</strong> ReLU outputs zero for negative inputs and passes positive inputs through. If quantized zero is not exact, the boundary between "active" and "inactive" shifts by the zero-point error. Neurons that should be inactive leak signal. Neurons that should be active are suppressed.</p>
+<p><strong>Bias terms drift.</strong> Bias values are added directly to accumulations. If the zero representation carries error, every bias addition injects a small offset. Over many layers, these offsets compound.</p>
+<p>Exact-zero mapping is a correctness invariant for affine quantization. Without it, every operation that touches zero — and in a typical network, that is most of them — requires explicit compensation terms.</p>
+<hr />
+<h2 id="symmetric-vs-asymmetric-quantization"><a class="header" href="#symmetric-vs-asymmetric-quantization">Symmetric vs Asymmetric Quantization</a></h2>
+<p>The choice of zero-point creates two fundamentally different quantization modes.</p>
+<h3 id="asymmetric-quantization"><a class="header" href="#asymmetric-quantization">Asymmetric Quantization</a></h3>
+<p>This is what we have been computing. The range is $[r_{\min}, r_{\max}]$, and $Z$ is chosen so that zero maps to an integer within $[q_{\min}, q_{\max}]$. The grid matches the actual data range.</p>
+<p>For our example: range [-2.3, 5.1], $Z = 79$. All 256 levels span the observed data range. No representational budget is wasted.</p>
+<h3 id="symmetric-quantization"><a class="header" href="#symmetric-quantization">Symmetric Quantization</a></h3>
+<p>Symmetric quantization forces $Z = 0$ and centers the range around zero: $[-\alpha, +\alpha]$, where $\alpha = \max(|r_{\min}|, |r_{\max}|)$.</p>
+<p>For the same data: $\alpha = \max(2.3, 5.1) = 5.1$. The range becomes [-5.1, 5.1], mapped to signed int8 [-128, 127].</p>
+<p>$$S = \frac{5.1}{127} \approx 0.04016$$</p>
+<p>The step size is 0.04016, compared to 0.02902 under asymmetric. Resolution is 38% coarser. And the range below -2.3 — from -5.1 to -2.3 — contains no actual data. Roughly 27% of the grid points represent values that never occur.</p>
+<p><strong>Concrete comparison — mapping three values through both schemes:</strong></p>
+<div class="table-wrapper"><table><thead><tr><th>Real value</th><th>Asymmetric ($S$ = 0.02902, $Z$ = 79)</th><th>Symmetric ($S$ = 0.04016, $Z$ = 0)</th></tr></thead><tbody>
+<tr><td>0.5</td><td>$q = 96$, $\hat{r} = 0.493$, error = 0.007</td><td>$q = 12$, $\hat{r} = 0.482$, error = 0.018</td></tr>
+<tr><td>1.5</td><td>$q = 131$, $\hat{r} = 1.509$, error = 0.009</td><td>$q = 37$, $\hat{r} = 1.486$, error = 0.014</td></tr>
+<tr><td>3.0</td><td>$q = 182$, $\hat{r} = 2.989$, error = 0.011</td><td>$q = 75$, $\hat{r} = 3.012$, error = 0.012</td></tr>
+</tbody></table>
+</div>
+<p>Asymmetric quantization produces roughly half the error on these representative values. Symmetric wastes 27% of its codes on a range with no data, and the remaining 73% of codes must cover the same region that asymmetric covers with 100% of its codes.</p>
+<p>So why would anyone choose symmetric? Because $Z = 0$ removes entire correction terms from the computation.</p>
+<p>When two quantized values are multiplied and accumulated — the core operation in every linear layer and convolution — the full integer arithmetic expands as follows. Let $q_w = \text{round}(w/S_w) + Z_w$ and $q_x = \text{round}(x/S_x) + Z_x$. The real-valued dot product $\sum w_i x_i$ becomes:</p>
+<p>$$S_w S_x \left[\sum q_{w_i} q_{x_i} - Z_x \sum q_{w_i} - Z_w \sum q_{x_i} + N \cdot Z_w Z_x\right]$$</p>
+<p>The integer dot product is only the first term; zero-points introduce three additional correction terms. The first term — $\sum q_{w_i} q_{x_i}$ — is the integer dot product that hardware accelerates. The remaining three are <em>correction terms</em> introduced by the zero-points:</p>
+<ul>
+<li>$Z_x \sum q_{w_i}$: a vector-scalar multiplication over all quantized weights, required for every output element.</li>
+<li>$Z_w \sum q_{x_i}$: a vector-scalar multiplication over all quantized inputs.</li>
+<li>$N \cdot Z_w Z_x$: a constant offset per output element.</li>
+</ul>
+<p>These corrections add two extra vector reductions and a scalar add to <em>every single matrix multiply in the model</em>. For a [4096 × 4096] weight matrix, each output row requires summing 4096 quantized weights and 4096 quantized inputs — per output element, per layer, per inference.</p>
+<p><strong>Worked example: the correction terms in practice.</strong> Suppose a tiny dot product with $N = 3$: weights $q_w = [8, -6, 3]$ with $Z_w = 2$, inputs $q_x = [4, 7, -5]$ with $Z_x = 1$.</p>
+<ul>
+<li>The integer dot product (first term): $8 \times 4 + (-6) \times 7 + 3 \times (-5) = 32 - 42 - 15 = -25$</li>
+<li>Correction 1: $-Z_x \sum q_{w_i} = -1 \times (8 + (-6) + 3) = -1 \times 5 = -5$</li>
+<li>Correction 2: $-Z_w \sum q_{x_i} = -2 \times (4 + 7 + (-5)) = -2 \times 6 = -12$</li>
+<li>Correction 3: $N \cdot Z_w \cdot Z_x = 3 \times 2 \times 1 = 6$</li>
+<li>Full result: $-25 - 5 - 12 + 6 = -36$</li>
+</ul>
+<p>The integer dot product alone gives $-25$. The true result (after corrections) is $-36$. Getting it wrong by omitting corrections means a 31% error — on every output element. Now imagine this at $N = 4096$: the three correction terms involve a 4096-element weight sum, a 4096-element input sum, and a scalar, all computed per output element.</p>
+<p>One partial mitigation: $\sum q_{w_i}$ depends only on weights and can be precomputed once per output channel during model preparation. But $\sum q_{x_i}$ depends on the input and must be computed at runtime for every inference.</p>
+<p>When both zero-points are zero ($Z_w = 0$, $Z_x = 0$), all three correction terms vanish. The entire operation collapses to:</p>
+<p>$$S_w S_x \sum q_{w_i} q_{x_i}$$</p>
+<p>A single integer dot product. No corrections. The hardware executes one fused multiply-accumulate instruction per pair of values — exactly what the int8 datapath in Chapter 4 was built for.</p>
+<p>Asymmetric quantization captures the range more precisely but adds three correction terms to every multiply-accumulate operation. Symmetric quantization wastes some range but eliminates those corrections entirely. In some backends, the correction overhead in a 24-layer transformer with asymmetric quantization on both weights and activations can account for a meaningful fraction of total int8 compute time — the exact cost depends on the kernel implementation (FBGEMM, QNNPACK, TensorRT, etc.) and how aggressively weight-sums are precomputed.</p>
+<p>Hardware prefers symmetric quantization not because it is conceptually simpler, but because it is structurally cheaper to execute.</p>
+<h3 id="the-practical-convention-symmetric-weights-asymmetric-activations"><a class="header" href="#the-practical-convention-symmetric-weights-asymmetric-activations">The Practical Convention: Symmetric Weights, Asymmetric Activations</a></h3>
+<p>In most deployed systems, the choice is not "symmetric everywhere" or "asymmetric everywhere." The standard recipe is a <strong>hybrid</strong>: symmetric quantization for weights, asymmetric for activations. This is the default in PyTorch's quantization stack, in TensorRT, and in most mobile backends. Understanding why requires examining each side separately.</p>
+<p><strong>Weights → Symmetric.</strong> Neural network weights are typically distributed roughly symmetrically around zero — a bell curve centered at (or very near) 0.0. Symmetric quantization fits this distribution naturally without wasting codes. More importantly, setting $Z_w = 0$ eliminates two of the three correction terms in the dot-product expansion above: the $Z_w \sum q_{x_i}$ term (which depends on the input and must be computed at runtime) and the $N \cdot Z_w Z_x$ constant both vanish. Only the $Z_x \sum q_{w_i}$ term remains — and $\sum q_{w_i}$ depends only on weights, so it can be precomputed once during model preparation and stored as a constant. This makes the per-inference cost of the remaining correction nearly free.</p>
+<p><strong>Activations → Asymmetric.</strong> Activations after ReLU are strictly non-negative: their range is $[0, r_{\max}]$. If you apply symmetric quantization, the range becomes $[-r_{\max}, +r_{\max}]$, and <em>half</em> of your 256 int8 codes represent negative values that can never occur — you are left with effectively ~128 usable levels instead of 256. Asymmetric quantization maps the zero-point to code 0 (since the minimum is 0.0), giving you all 256 codes for the actual $[0, r_{\max}]$ range. For non-ReLU activations (GELU, SiLU, etc.) the distribution may extend below zero, in which case the advantage is smaller — but even there, activations are rarely perfectly symmetric, so asymmetric usually fits better.</p>
+<p><strong>The net effect.</strong> With $Z_w = 0$ (weights symmetric) and $Z_x \neq 0$ (activations asymmetric), the dot-product formula becomes:</p>
+<p>$$S_w S_x \left[\sum q_{w_i} q_{x_i} - Z_x \sum q_{w_i}\right]$$</p>
+<p>One correction term instead of three. And $\sum q_{w_i}$ is a precomputed constant per output channel — so the runtime cost is one extra addition per output element, which hardware handles trivially.</p>
+<p>This is why Appendix B uses exactly this setup: asymmetric uint8 for activations, symmetric int8 for weights. It is not an arbitrary choice — it is the best trade-off between representational precision (asymmetric activations waste no codes) and compute efficiency (symmetric weights eliminate runtime correction overhead).</p>
+<hr />
+<h2 id="scale-and-zero-point-are-contracts"><a class="header" href="#scale-and-zero-point-are-contracts">Scale and Zero-Point Are Contracts</a></h2>
+<p>Once scale and zero-point are determined, they are fixed. They are compiled into the quantized model alongside the quantized weights. Every subsequent layer, every accumulation, every output interpretation depends on these exact values.</p>
+<p>In static quantization, they cannot be adjusted at inference time — they cannot be tuned per-input. (Dynamic quantization, covered later, recomputes activation scales per input or per batch, but weight scales remain fixed even there.) If the scale is wrong — if it was computed from unrepresentative data, or if the true range of values extends beyond what the scale covers — every inference will carry that error. Their permanence is the point: scale and zero-point are binding contracts between the quantization scheme and every computation that follows.</p>
+<hr />
+<h2 id="conceptual-consolidation"><a class="header" href="#conceptual-consolidation">Conceptual Consolidation</a></h2>
+<p>Scale controls resolution. Zero-point anchors the grid to real zero. Together they define the complete mapping between continuous values and the finite set of integers that a quantized model operates over.</p>
+<p>Whenever you encounter a quantized layer, two questions should be immediate: What is the scale — and is it fine enough to preserve the distinctions this layer depends on? What is the zero-point — and does zero map exactly?</p>
+<p>This chapter defined the mapping for one tensor with one scale and one zero-point. In practice, different output channels can have very different value distributions, and a single scale is a blunt instrument. Per-channel scales and groupwise quantization — covered in later chapters — address this by giving each channel or group its own contract.</p>
+<p><em>These scale and zero-point computations will be composed into a full end-to-end pipeline in Appendix B, where you'll compute them for every layer of a small model and trace the errors all the way to the output.</em></p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="chapter02_quantization_as_representational_constraint.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="chapter04_hardware_dictates_the_rules.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="chapter02_quantization_as_representational_constraint.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="chapter04_hardware_dictates_the_rules.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

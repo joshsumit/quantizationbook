@@ -1,0 +1,323 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>The Quantized Graph - Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A Practitioner&#x27;s Guide to Model Compression for Real Hardware">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+        <!-- MathJax -->
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="chapter-6-the-quantized-graph"><a class="header" href="#chapter-6-the-quantized-graph">Chapter 6: The Quantized Graph</a></h1>
+<h2 id="beyond-individual-values"><a class="header" href="#beyond-individual-values">Beyond Individual Values</a></h2>
+<p>Chapters 2 through 5 treated quantization as an operation on individual values: a real number maps to a grid point, error is introduced, and the value continues. But a neural network is not a collection of independent values. It is a computation graph — a sequence of operators where the output of one becomes the input to the next.</p>
+<p>In a quantized graph, each operator has its own scale and zero-point. Those scales define <em>domains</em> — a <em>domain</em> is simply the (scale, zero-point, precision) triple that governs how integers are interpreted as real values at a given point in the graph. Crossing domains requires an explicit conversion step. The output domain of one operator is not the input domain of the next. The scale that was appropriate for the first layer's activations has no reason to match what the second layer expects. Something must happen at every junction where one domain ends and another begins.</p>
+<hr />
+<h2 id="quantization-boundaries"><a class="header" href="#quantization-boundaries">Quantization Boundaries</a></h2>
+<p>A <em>quantization boundary</em> is the point in the graph where the numeric domain changes — where the scale and zero-point of one operator's output differ from the scale and zero-point expected by the next operator's input.</p>
+<p>Consider a simple two-layer network: Linear₁ followed by Linear₂. In float32, the output of Linear₁ flows directly into Linear₂ — there is no domain mismatch because float32 is a universal representation. In a quantized graph, this is no longer true.</p>
+<p>Linear₁ has its own output scale $S_1$ and zero-point $Z_1$, determined by its activation distribution. Linear₂ has its own input scale $S_2$ and zero-point $Z_2$, determined by what its weights were calibrated against. If $S_1 \neq S_2$ or $Z_1 \neq Z_2$, the output of Linear₁ cannot be consumed directly by Linear₂. The integers produced by one layer mean different real values under the mapping expected by the next.</p>
+<blockquote>
+<p><strong>📊 INSERT DIAGRAM: Quantization Boundaries in a Two-Layer Network</strong></p>
+<p>A horizontal graph showing two quantized linear layers with their domains:</p>
+<pre><code>Float input ──→ [Quantize to S₀,Z₀] ──→ INT8
+                                         │
+                                  ┌──────┴──────┐
+                                  │  Linear₁     │  Domain₁: (S₁, Z₁, int8)
+                                  │  int8×int8   │
+                                  │  → int32 acc │
+                                  └──────┬──────┘
+                                         │
+                             ╔══════╩══════╗
+                             ║  BOUNDARY    ║  ← Requantize: int32 → int8
+                             ║  S₁ ≠ S₂     ║     (rounding + clamping here)
+                             ╚══════╦══════╝
+                                         │
+                                  ┌──────┴──────┐
+                                  │  Linear₂     │  Domain₂: (S₂, Z₂, int8)
+                                  │  int8×int8   │
+                                  │  → int32 acc │
+                                  └──────┬──────┘
+                                         │
+                             [Dequantize] ──→ Float output
+</code></pre>
+<p>Annotations:</p>
+<ul>
+<li>Highlight the BOUNDARY box: "Every boundary = one requantization = one rounding + one clamping"</li>
+<li>Show that Domain₁ and Domain₂ have different scales (e.g., S₁=0.020, S₂=0.035)</li>
+<li>Note: "In float32, this boundary doesn't exist — values flow freely between layers"</li>
+</ul>
+</blockquote>
+<p>This mismatch point is a boundary. At every boundary, the values must be converted from one domain to another — rescaled, rounded, and clamped. The boundary exists, and it is not optional. Boundaries can only disappear when operators are <em>fused</em> — merged into a single combined operation so the conversion happens once at the chain’s output rather than at each intermediate step. (Fusion is covered in Chapter 8.) Boundaries can also disappear when multiple operators intentionally share a single domain.</p>
+<h3 id="worked-example-a-boundary-in-numbers"><a class="header" href="#worked-example-a-boundary-in-numbers">Worked Example: A Boundary in Numbers</a></h3>
+<p>To see exactly what happens at a boundary, trace a single value through two layers with different scales.</p>
+<p><strong>Setup.</strong> Layer 1 produces an activation value whose true float32 value is $r = 2.13$. Layer 1's output domain is $(S_1 = 0.020, Z_1 = 0)$ (symmetric int8). Layer 2's input domain is $(S_2 = 0.035, Z_2 = 0)$.</p>
+<p><strong>Step 1 — Layer 1 quantizes the output.</strong></p>
+<p>$$q_1 = \text{round}!\left(\frac{2.13}{0.020}\right) = \text{round}(106.5) = 107 \qquad r_1' = 107 \times 0.020 = 2.140$$</p>
+<p>Rounding error: $|2.13 - 2.14| = 0.010$.</p>
+<p><strong>Step 2 — At the boundary, convert from Domain 1 to Domain 2.</strong></p>
+<p>The int8 code 107 in Domain 1 represents $r = 2.140$. Domain 2 needs this value re-encoded with its own scale:</p>
+<p>$$q_2 = \text{round}!\left(\frac{2.140}{0.035}\right) = \text{round}(61.14) = 61 \qquad r_2' = 61 \times 0.035 = 2.135$$</p>
+<p>Requantization error: $|2.140 - 2.135| = 0.005$.</p>
+<p><strong>Total error from float to Layer 2 input:</strong> $|2.13 - 2.135| = 0.005$. In this case the two rounding errors partially cancelled (by luck). In general they can add or partially cancel — the point is that each boundary <em>introduces</em> a rounding event, and across many boundaries the errors accumulate.</p>
+<h2 id="what-if-the-domains-matched-if-s_2--s_1--0020-then-code-107-would-be-passed-directly-to-layer-2-with-no-conversion-total-error-remains-at-0010-from-step-1--no-additional-boundary-error-this-is-why-scale-alignment-enforcing-matching-scales-and-fusion-eliminating-boundaries-entirely-are-the-primary-tools-for-reducing-graph-level-error"><a class="header" href="#what-if-the-domains-matched-if-s_2--s_1--0020-then-code-107-would-be-passed-directly-to-layer-2-with-no-conversion-total-error-remains-at-0010-from-step-1--no-additional-boundary-error-this-is-why-scale-alignment-enforcing-matching-scales-and-fusion-eliminating-boundaries-entirely-are-the-primary-tools-for-reducing-graph-level-error"><strong>What if the domains matched?</strong> If $S_2 = S_1 = 0.020$, then code 107 would be passed directly to Layer 2 with no conversion. Total error remains at 0.010 from Step 1 — no additional boundary error. This is why <em>scale alignment</em> (enforcing matching scales) and <em>fusion</em> (eliminating boundaries entirely) are the primary tools for reducing graph-level error.</a></h2>
+<h2 id="accumulator-domains"><a class="header" href="#accumulator-domains">Accumulator Domains</a></h2>
+<p>Within a single operator, quantization creates a second kind of domain transition — one that is less obvious but equally important.</p>
+<p>When two int8 values are multiplied, the result requires more than 8 bits. The product of two 8-bit integers can be as large as $127 \times 127 = 16{,}129$, which does not fit in an 8-bit integer (maximum value 127 for signed, 255 for unsigned). When these products are summed across a dot product — say, 512 multiplications accumulated into a single result — the accumulated value can reach:</p>
+<p>$$512 \times 127 \times 127 = 8{,}258{,}048$$</p>
+<p>This number requires 24 bits to represent.</p>
+<p>The exact bit requirement follows a formula. For a dot product of $N$ pairs of $b$-bit integers, each in the range $[0, 2^b - 1]$, the maximum possible accumulator value is $N \times (2^b - 1)^2$. The bits needed to represent this value are:</p>
+<p>$$\text{bits}_{\text{acc}} = \lceil \log_2(N \times (2^b - 1)^2) \rceil = 2b + \lceil \log_2(N) \rceil$$</p>
+<p>For int8 ($b = 8$) with a dot product width of $N = 1024$ (a common hidden dimension):</p>
+<p>$$\text{bits}_{\text{acc}} = 2 \times 8 + \lceil \log_2(1024) \rceil = 16 + 10 = 26 \text{ bits}$$</p>
+<p>An int16 accumulator (16 bits, max value 65,535) overflows at $N = 4$ — after just four multiply-accumulates. An int32 accumulator (32 bits, max value ~2.1 billion) handles dot products up to $N = 65{,}536$ before overflowing — safely above any realistic layer width.</p>
+<p>This is not an implementation detail. It is a correctness guarantee. In mainstream int8 kernels on CPUs, GPUs, and NPUs, the int8 × int8 multiply-accumulate produces int32 results. Some edge-device DSPs use int16 accumulators for power savings — these devices can overflow on narrow dot products (even a handful of worst-case signed MACs can exceed int16 range), producing incorrect outputs. <em>When an accumulator overflows</em>, the result wraps around: a sum that should be 40,000 becomes $40{,}000 - 65{,}536 = -25{,}536$ in a signed int16 accumulator. The model silently produces garbage. This is the "Numerical Explosion" failure that the bit-growth formula predicts and that Chapter 4's hardware table warns about.</p>
+<p>The consequence is that every linear layer and convolution in a quantized model operates in two domains: the inputs arrive as int8, and the accumulation produces int32. The output of the operator — before any conversion — is int32, not int8.</p>
+<hr />
+<h2 id="bias-lives-in-the-accumulator-domain"><a class="header" href="#bias-lives-in-the-accumulator-domain">Bias Lives in the Accumulator Domain</a></h2>
+<p>Neural network layers typically add a bias term after the matrix multiply: $y = Wx + b$. In the quantized graph, the multiply-accumulate produces an int32 result. The bias must be added to this int32 value.</p>
+<p>If bias were quantized to int8, it would be restricted to 256 levels. But the int32 accumulator can hold values in the millions. An int8 bias added to an int32 accumulator is a rounding error at best and a numerical catastrophe at worst — the bias would be quantized so coarsely relative to the accumulator range that it would effectively vanish or snap to a wildly wrong value.</p>
+<p>Bias is therefore quantized to int32 — matching the accumulator domain. Its scale is typically set to $S_w \times S_x$ (the product of the weight scale and the input scale), per output channel if weights are per-channel quantized. This ensures the bias occupies the same numeric domain as the accumulated products. This is not a tunable choice. It is a structural requirement: bias must live in the accumulator domain, or the addition is meaningless.</p>
+<p><strong>Worked example: why int8 bias fails.</strong> Suppose $S_w = 0.02902$ (from Chapter 3) and $S_x = 0.00523$ (input scale). The accumulator scale is $S_{\text{acc}} = S_w \times S_x = 0.0001517$. A bias value of 0.5 in float maps to int32 as $0.5 / 0.0001517 \approx 3{,}296$ — well represented in the int32 range.</p>
+<p>If bias were int8 with the same scale, it could only represent values at multiples of 0.0001517 up to $127 \times 0.0001517 = 0.019$. A bias of 0.5 would overflow int8 entirely. Even if we gave bias its own wider scale — say $S_b = 0.004$ to cover [-0.5, 0.5] — the bias step size (0.004) would be 26× coarser than the accumulator's step size (0.0001517). Adding a bias quantized at 0.004 steps to an accumulator operating at 0.0001517 steps is like adding a measurement rounded to the nearest meter to one measured in centimeters.</p>
+<hr />
+<h2 id="the-output-problem"><a class="header" href="#the-output-problem">The Output Problem</a></h2>
+<p>The accumulator is int32, but the next operator expects int8 inputs. This is the structural problem that defines quantized inference.</p>
+<p>After the multiply-accumulate and bias addition, the result sits in an int32 register. It must be converted to int8 before the next operator can consume it — because the next operator's int8 × int8 multiply-accumulate takes int8 inputs, and feeding it int32 values is not a valid operation.</p>
+<p>This conversion is not a cast. The int32 value represents a specific real number under the accumulator's scale. The int8 value must represent the same real number (as closely as possible) under a different scale. The conversion involves rescaling, rounding, and clamping — an operation called <em>requantization</em>. It introduces error every time it is applied.</p>
+<p>The domain ledger for a single linear layer:</p>
+<pre><code>Linear: int8 (Sx, Zx) × int8 (Sw, Zw) → int32 (Sw·Sx) → requant → int8 (Sy, Zy)
+</code></pre>
+<p>Every linear layer and convolution in the quantized graph creates this pattern: int8 inputs → int32 accumulation → conversion back to int8 for the next layer. The conversion back is mandatory. It cannot be skipped, because the next layer's hardware instructions require int8 inputs.</p>
+<hr />
+<h2 id="boundaries-are-structural"><a class="header" href="#boundaries-are-structural">Boundaries Are Structural</a></h2>
+<p>The number of these conversion points in a model is not a runtime decision. It is determined entirely by the graph topology.</p>
+<p>Trace data through a three-layer model: Linear₁ → ReLU → Linear₂.</p>
+<ul>
+<li>Input $x$ is int8.</li>
+<li>Linear₁: int8 × int8 → int32 accumulator. Bias added in int32. Output is int32.</li>
+<li><strong>Boundary 1</strong>: int32 must be requantized to int8 for subsequent consumption. If ReLU is fused into the requantization epilogue — applied as a clamp during the int32 → int8 conversion, which is the common case — it does not introduce an additional boundary. If ReLU runs as a separate unfused op, it still preserves the activation domain (same scale and zero-point for positive values, zero output otherwise), so no extra boundary is needed for ReLU itself.</li>
+<li>Linear₂: int8 × int8 → int32 accumulator. Bias added in int32. Output is int32.</li>
+<li><strong>Boundary 2</strong>: int32 must be requantized to int8 for the model's final output.</li>
+</ul>
+<p>Two linear layers produce two boundaries. A 50-layer model produces roughly 50 boundaries (before fusion). A 100-layer model produces roughly 100.</p>
+<p>This count is a fixed structural property of the model before optimization. It cannot be reduced by tuning parameters or choosing better calibration data. It can only be reduced by changing the graph itself — fusing operators so that intermediate boundaries disappear (Chapter 8 covers this in detail).</p>
+<hr />
+<h2 id="conceptual-consolidation"><a class="header" href="#conceptual-consolidation">Conceptual Consolidation</a></h2>
+<p>A quantized neural network is not a stack of layers with lower precision numbers. It is a graph of operators where each operator internally accumulates in int32, and every transition between operators requires converting from int32 back to int8. These conversion points — boundaries — are fixed by the graph topology.</p>
+<p>When you look at a quantized model, count the boundaries. That count determines how many times values will be rounded and clamped during a single inference pass — and the cumulative effect is the dominant source of quantization failure.</p>
+<p>Profiling tip: if your quantized model is slower than the floating-point baseline, boundary materialization and fallback are the first suspects. Count the requantization points, then check whether any are failing to fuse.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="chapter05_where_error_is_born.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="chapter07_requantization.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="chapter05_where_error_is_born.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="chapter07_requantization.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

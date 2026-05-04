@@ -1,0 +1,355 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Post-Training Quantization - Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A Practitioner&#x27;s Guide to Model Compression for Real Hardware">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+        <!-- MathJax -->
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Neural Network Quantization: From Mathematical Foundations to Hardware-Aware Inference</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="chapter-10-post-training-quantization"><a class="header" href="#chapter-10-post-training-quantization">Chapter 10: Post-Training Quantization</a></h1>
+<h2 id="the-simplest-strategy"><a class="header" href="#the-simplest-strategy">The Simplest Strategy</a></h2>
+<p>The full machinery is now in place: grids, scales, boundaries, requantization, fusion, and calibration. The first complete quantization strategy is <em>post-training quantization</em> (PTQ) — quantizing an already-trained model without any retraining.</p>
+<p>PTQ is widely used because it is typically the cheapest route to deployment. The model trains in floating point as usual (often mixed precision). After training is complete, quantization is applied as a post-processing step. No gradients are computed. No training loop is modified. The weights are mapped directly to integers using calibrated scales.</p>
+<hr />
+<h2 id="how-ptq-works-end-to-end"><a class="header" href="#how-ptq-works-end-to-end">How PTQ Works, End to End</a></h2>
+<p>The complete PTQ workflow:</p>
+<ol>
+<li><strong>Start with a trained floating-point model.</strong> Training is finished. The weights are fixed.</li>
+<li><strong>Fuse operators</strong> where possible (Chapter 8). This reduces the number of requantization boundaries.</li>
+<li><strong>Insert observers</strong> at every remaining boundary in the fused graph (Chapter 9).</li>
+<li><strong>Run calibration data</strong> through the model. Observers collect activation statistics.</li>
+<li><strong>Freeze observers.</strong> Each observer produces a final scale and zero-point for its boundary.</li>
+<li><strong>Quantize weights.</strong> Each weight tensor is mapped to int8 (or int4) using per-tensor or per-channel scale, computed directly from the weight values.</li>
+<li><strong>Replace float operators with quantized operators.</strong> The model is now a quantized execution graph.</li>
+</ol>
+<p>The entire process touches the model once, after training. No weight is updated. No gradient is computed. The weights are taken as-is and mapped to the nearest grid points.</p>
+<h3 id="what-the-deployed-model-looks-like"><a class="header" href="#what-the-deployed-model-looks-like">What the deployed model looks like</a></h3>
+<p>After PTQ, the model is fully static. Weights are stored as int8 integers — they are not floating-point values that get converted at runtime. Activation scales and zero-points are stored as constants baked into the graph at each quantization boundary.</p>
+<p><strong>Concrete memory layout.</strong> A layer with [4096 × 4096] weights under per-channel int8 quantization:</p>
+<ul>
+<li>Weight data: $4096 \times 4096 \times 1$ byte = 16 MB (int8)</li>
+<li>Scale metadata: 4096 scales (one per output channel) × 2 bytes (float16) = 8 KB</li>
+<li>Per-layer footprint: 16.008 MB</li>
+<li>Compared to float32: $4096 \times 4096 \times 4$ bytes = 64 MB</li>
+<li>Compression: $64 / 16.008 \approx 4.0\times$</li>
+</ul>
+<p>For a 24-layer model: $24 \times 16.008 \approx 384$ MB weights + 192 KB scales. Float32 equivalent: $24 \times 64 = 1{,}536$ MB. The scale metadata (192 KB) is 0.05% of weight data — negligible overhead for per-channel quantization.</p>
+<p>During inference, the hardware converts each layer's floating-point activations to int8 using the stored constants, executes the int8 matmul, and produces results — with no range computation at runtime. This is the performance advantage of static quantization: the hardware never pauses to scan a tensor for its min/max. Every parameter was decided during steps 3–6 above, and the inference engine simply reads them from memory.</p>
+<p>The observers from step 3–5 are gone. They were temporary tools used during calibration. In the deployed model, no observer logic exists — only the constants they produced.</p>
+<hr />
+<h2 id="ptq-is-passive-range-ownership"><a class="header" href="#ptq-is-passive-range-ownership">PTQ Is Passive Range Ownership</a></h2>
+<p>PTQ does not modify the model to fit quantization. It observes the model's existing distributions — weights and activations — and sets ranges to match what it finds. The calibration data tells the model what the valid range is. The model has no say in the matter.</p>
+<p>By <em>passive</em> we mean: PTQ accepts the model exactly as trained and hopes its weight and activation distributions happen to survive quantization. Contrast this with QAT (Chapter 11), which is <em>active</em>: it modifies the training process so the model learns distributions that deliberately survive quantization.</p>
+<p>This passivity is both the strength and the limitation of PTQ.</p>
+<p><strong>Strength:</strong> PTQ is fast, requires no training infrastructure, and works on models where retraining is impossible — third-party models, proprietary architectures, or models where training data is unavailable.</p>
+<p><strong>Limitation:</strong> PTQ can only work within the bounds of the existing weight and activation distributions. If those distributions are not quantization-friendly, PTQ cannot fix them.</p>
+<p><strong>Worked example: why PTQ has a ceiling.</strong> Consider a layer with 4096 output channels. Per-channel weight ranges for 4095 channels fall in [0.01, 0.05] (range 0.04). One outlier channel has range [0.01, 5.2] (range 5.19). Under per-channel int8 quantization:</p>
+<ul>
+<li>Normal channels: step size $= 0.04 / 255 \approx 0.000157$ — fine resolution</li>
+<li>Outlier channel: step size $= 5.19 / 255 \approx 0.0204$ — 130× coarser</li>
+</ul>
+<p>A weight of 0.03 in a normal channel maps to code $\text{round}((0.03 - 0.01) / 0.000157) = 127$, with error $&lt; 0.000079$. The same weight of 0.03 in the outlier channel maps to code $\text{round}((0.03 - 0.01) / 0.0204) = 1$, dequantized to $0.01 + 1 \times 0.0204 = 0.0304$, with error 0.0004 — 5× larger, but still small. The real problem: a weight of 0.035 in the outlier channel also maps to code 1, making 0.030 and 0.035 indistinguishable. In the normal channel, they map to codes 127 and 159 — clearly distinct.</p>
+<p>PTQ accepts this. QAT (Chapter 11) could push the outlier channel’s values toward a tighter range during training, reducing its step size. PTQ cannot — it works with the distributions as they exist.</p>
+<hr />
+<h2 id="when-ptq-works"><a class="header" href="#when-ptq-works">When PTQ Works</a></h2>
+<p>PTQ works well when the model's distributions cooperate. Specifically, when:</p>
+<ul>
+<li><strong>Weight distributions are compact.</strong> Weights cluster near zero with relatively uniform per-channel ranges. The max/min ratio across channels is moderate (say, 3:1 to 5:1). Each channel can be quantized with good resolution.</li>
+<li><strong>Activation distributions are bounded.</strong> Activations do not produce extreme outliers. The range covered by a min-max or percentile observer captures the meaningful values without sacrificing resolution.</li>
+<li><strong>The architecture is fusion-friendly.</strong> Conv-BN-ReLU chains fuse cleanly, reducing the boundary count (Chapter 8).</li>
+</ul>
+<p>Many mainstream vision CNNs meet these conditions. Models like ResNet-50, MobileNet, and EfficientNet can typically achieve sub-1% top-1 accuracy drop under int8 PTQ with competent calibration (see references). The weight distributions were shaped by architectures and training practices (batch normalization, ReLU activations) that happen to produce quantization-friendly ranges.</p>
+<hr />
+<h2 id="when-ptq-fails"><a class="header" href="#when-ptq-fails">When PTQ Fails</a></h2>
+<p>PTQ fails when the model's distributions are structurally hostile to quantization.</p>
+<p>Consider a model where certain weight channels contain values 50× larger than the median weight value. Under per-tensor quantization, the scale is set by the extreme channel. Every other channel — the vast majority — loses resolution. Under per-channel quantization, each channel gets its own scale, which helps — but if the extreme channel's values are genuinely needed for the model's behavior, its int8 representation at that scale may still be too coarse.</p>
+<p>Now consider the activations. If certain activation channels consistently produce values at 60.0 while all other channels peak below 2.0, the per-tensor scale is dominated by the outlier channels. The common channels get a handful of representable levels (Chapter 5's representation error in action).</p>
+<p>In both cases, recalibrating with different data does not help. The problem is not the calibration — the problem is the distributions themselves. The scales are set correctly given the data; the data just doesn't fit an int8 grid well.</p>
+<p>This is PTQ's structural ceiling. PTQ can only work within the distributions the model produces. It cannot reshape those distributions. When the distributions are structurally hostile, calibration alone usually cannot recover accuracy — you typically need distribution-shaping methods (Chapter 15) or retraining (QAT, Chapter 11). Between PTQ and full QAT sit intermediate approaches that reshape distributions without full retraining; later chapters cover these.</p>
+<p><strong>How to identify which layers are responsible.</strong> In practice, PTQ failures are rarely uniform across the model. A small number of layers — often 3–5 out of dozens — dominate the total accuracy loss. The standard diagnostic is a <em>per-layer sensitivity analysis</em>: quantize one layer at a time while keeping all others in float, measure the accuracy drop, and rank layers by their individual contribution to error.</p>
+<blockquote>
+<p><strong>📊 INSERT DIAGRAM: Per-Layer Sensitivity Analysis (Bar Chart)</strong></p>
+<p>A horizontal bar chart for a 24-layer model:</p>
+<pre><code>Layer  | Accuracy drop when this layer alone is quantized to int8
+-------|---------------------------------------------------------
+  1    | ██████████████  1.4%     &lt;-- first layer (large impact)
+  2    | ████  0.4%
+  3    | ██  0.2%
+ 4-20  | █  0.05% each               &lt;-- bulk of layers: negligible
+ 21    | ███  0.3%
+ 22    | ██  0.2%
+ 23    | ███████████  1.1%      &lt;-- near-output layer (large impact)
+ 24    | ████████████████  1.6%  &lt;-- output layer (largest impact)
+</code></pre>
+<p>Annotations:</p>
+<ul>
+<li>Highlight that ~3 layers (1, 23, 24) account for &gt;70% of total accuracy loss</li>
+<li>Label these as "keep in FP16" candidates (mixed precision, Chapter 12)</li>
+<li>Show that the middle layers (4–20) can safely be int8</li>
+<li>Add callout: "Sensitivity analysis takes minutes and saves weeks of debugging"</li>
+</ul>
+</blockquote>
+<p>Layers at the input and output of the network are typically most sensitive — early layers because their errors propagate through every subsequent layer (Chapter 5), and output layers because their errors directly affect the final prediction with no opportunity for averaging.</p>
+<p>When sensitivity analysis reveals that only a few layers dominate the error, the remedy is <em>mixed precision</em> (Chapter 12): keep those layers in float16 while quantizing the rest. When sensitivity analysis shows broadly distributed error across many layers, the problem is structural and requires a different approach entirely.</p>
+<p>Heuristic signals that PTQ has hit its ceiling (backend and task dependent):</p>
+<ul>
+<li>Top-line metric drop &gt; ~2–3% after careful calibration</li>
+<li>Per-channel weight range ratio (max range / median range) &gt; ~10×</li>
+<li>Activation channels with persistent outliers an order of magnitude above the bulk</li>
+<li>Switching from min-max to percentile observers helps but doesn't resolve the drop</li>
+</ul>
+<p><strong>PTQ failure patterns:</strong></p>
+<ul>
+<li><em>Calibration Mismatch</em>: ranges wrong because calibration data doesn't represent production distribution.</li>
+<li><em>Tail Clipping</em>: range too tight; saturation events frequent at boundary clamps.</li>
+<li><em>Distribution Mismatch / Budget Waste</em>: range too wide due to outliers; most codes wasted in empty regions.</li>
+<li><em>Resolution Collapse</em>: even per-channel resolution is too coarse for the model's required distinctions.</li>
+</ul>
+<p>If PTQ looks slow rather than inaccurate, first suspect Fusion Loss or Silent Fallback (Chapter 4).</p>
+<p>When these signals appear, the next step is not better calibration. It is a fundamentally different strategy — one where the model actively adapts to the quantization constraint during training.</p>
+<blockquote>
+<p><strong>📊 INSERT DIAGRAM: PTQ Failure Decision Flowchart</strong></p>
+<p>A decision tree that an engineer follows when PTQ accuracy is unacceptable:</p>
+<pre><code>PTQ accuracy drop &gt; threshold?
+  │
+  ├─ No → Deploy. PTQ is sufficient.
+  │
+  └─ Yes → Run per-layer sensitivity analysis
+             │
+             ├─ Few layers dominate? → Mixed Precision (Ch.12)
+             │     Keep sensitive layers in FP16, quantize the rest.
+             │
+             └─ Error spread across many layers?
+                  │
+                  ├─ Outlier channels visible? → SmoothQuant / Outlier control (Ch.15)
+                  │     Migrate activation range to weights.
+                  │
+                  ├─ Weight distributions hostile? → GPTQ / AWQ (Ch.17)
+                  │     Offline weight optimization without retraining.
+                  │
+                  └─ All else fails? → QAT (Ch.11)
+                       Retrain with fake quantization nodes.
+                       (Requires training infrastructure and data.)
+</code></pre>
+<p>Include a side note: "This flowchart follows escalating cost — each step down requires more compute, more expertise, and more infrastructure."</p>
+</blockquote>
+<hr />
+<h2 id="conceptual-consolidation"><a class="header" href="#conceptual-consolidation">Conceptual Consolidation</a></h2>
+<p>PTQ is passive: it observes the model's existing distributions and maps them to integers. When distributions are compact and well-behaved, PTQ is the right tool — cheap, effective, and sufficient. When distributions are hostile — high dynamic range, extreme outliers, large per-channel variance — PTQ hits a structural ceiling that no calibration improvement can overcome.</p>
+<p>The diagnostic question after PTQ is: is the remaining accuracy loss caused by range estimation (fixable with better calibration) or by the distribution shape itself (not fixable without retraining)? If the loss is Tail Clipping, calibration or observer choice can help. If the loss is Distribution Mismatch or Resolution Collapse, calibration won't fix it — you need distribution shaping or retraining.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="chapter09_calibration_and_observers.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="chapter11_quantization_aware_training.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="chapter09_calibration_and_observers.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="chapter11_quantization_aware_training.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
