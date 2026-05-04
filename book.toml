@@ -13,3 +13,4 @@ default-theme = "navy"
 preferred-dark-theme = "navy"
 git-repository-url = ""
 additional-css = []
+mathjax-support = true
