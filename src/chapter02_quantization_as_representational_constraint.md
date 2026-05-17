@@ -39,7 +39,7 @@ Consider how this looks on a real number line. The density of representable \\(\
 
 For training deep neural networks, this non-uniformity is an absolute superpower. During backpropagation, microscopic gradients near zero can be updated with pristine mathematical precision, while massive weight outliers can coexist in the same tensor without breaking the system register. 
 
-*(For a granular, bit-level walkthrough of how a floating-point value is encoded into binary registers under the IEEE-754 specification, refer to **Appendix A: Floating-Point Bit Architecture**).*
+*(For a granular, bit-level walkthrough of how a floating-point value is encoded into binary registers under the IEEE-754 specification, refer to **Appendix C: Floating-Point Bit Architecture**).*
 ---
 ## What Int8 Gives You
 

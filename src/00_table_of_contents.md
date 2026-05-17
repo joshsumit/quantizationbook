@@ -57,3 +57,4 @@
 
 - [Appendix A: The Quantization Toolkit Map](appendix_quantization_toolkit_map.md)
 - [Appendix B: End-to-End Numeric Walkthrough](appendix_end_to_end_walkthrough.md)
+- [Appendix C: Floating-Point Bit Architecture](appendix_floating_point_bit_architecture.md)
