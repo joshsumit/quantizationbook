@@ -4,7 +4,7 @@
 
 Quantization is the process of mapping continuous floating-point values to a finite, discrete set of integer values using a mathematically derived scale factor. This hardware-focused optimization enables deep learning models to execute significantly faster and operate within tighter resource constraints when deployed on physical hardware layers. 
 
-During standard model training and development, networks operate in the high-precision environment of 32-bit floating-point precision (\\(\text{Float32}\\)), which provides a vast landscape of over four billion representable levels. While this near-infinite resolution is structurally necessary to capture the microscopic numerical gradients required during backpropagation, it forces a massive memory and computational burden during model deployment.
+During standard model training and development, networks operate in the high-precision environment of 32-bit floating-point precision (\\(\text{Float32}\\)), which provides a massive resolution of over four billion representable levels. While this near-infinite resolution is structurally necessary to capture the microscopic numerical gradients required during backpropagation, it forces a massive memory and computational burden during model deployment.
 
 Quantization strips away this excessive resolution by replacing dense 32-bit values with coarser 8-bit (\\(\text{INT8}\\)) or 4-bit (\\(\text{INT4}\\)) representations. This transition collapses the available representational levels from billions down to just 256 or 16 points. Compressing the numerical space dramatically shrinks the model's physical memory footprint and accelerates arithmetic execution by routing operations through specialized low-precision datapaths on the chip. 
 
