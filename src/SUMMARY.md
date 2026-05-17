@@ -10,7 +10,7 @@
 # Part I — Foundations
 
 - [Why Quantization Exists](chapter01_why_quantization_exists.md)
-- [Floating Point Numbers](chapter01_a_floating points.md)
+	- [Floating-Point Fundamentals for Quantization](chapter01_a_floating points.md)
 - [Quantization as a Representational Constraint](chapter02_quantization_as_representational_constraint.md)
 - [Scale and Zero-Point](chapter03_scale_and_zero_point.md)
 - [Hardware Dictates the Rules](chapter04_hardware_dictates_the_rules.md)
