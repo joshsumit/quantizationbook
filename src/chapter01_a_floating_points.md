@@ -28,11 +28,11 @@ Floating-point addresses this limitation by storing:
 
 This is the same principle as scientific notation:
 
-\[
+\\[
 2.99792458 \times 10^8,
 \quad
 5.3 \times 10^{-11}
-\]
+\\]
 
 Digital hardware implements this in base-2 rather than base-10.
 
@@ -52,15 +52,15 @@ Float32 uses 32 bits partitioned into three fields:
 
 Its numerical value is defined as:
 
-\[
+\\[
 \\text{Value} = (-1)^S \times \\text{Significand} \times 2^{(E - 127)}
-\]
+\\]
 
 For normalized Float32 values:
 
-\[
+\\[
 \\text{Significand} = 1 + \\text{Fraction}
-\]
+\\]
 
 Where:
 
@@ -82,15 +82,15 @@ Because normalized binary numbers are of the form `1.xxxxx`, the leading `1` is 
 
 Step 1: Convert to binary.
 
-\[
+\\[
 2.5_{10} = 10.1_2
-\]
+\\]
 
 Step 2: Normalize.
 
-\[
+\\[
 10.1_2 = 1.01_2 \times 2^1
-\]
+\\]
 
 Step 3: Build each field.
 
