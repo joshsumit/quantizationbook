@@ -24,27 +24,25 @@ By allowing the radix point to "float" dynamically based on a multiplier (the po
 
 ---
 
-## The "Sliding Window"
-
 ## The Floating Dynamic Range
 
-A standard \(\text{Float32}\) number is split into three parts: a **Sign bit** (+ or -), an **Exponent** (the multiplier), and a **Mantissa** (the precision budget). 
+A standard \\(\text{Float32}\\) number is split into three parts: a **Sign bit** (+ or -), an **Exponent** (the multiplier), and a **Mantissa** (the precision budget). Instead of a continuous, uniform number line, this mechanism is best modeled as a **discrete grid with a fixed number of intervals** that scales dynamically.
 
-Instead of treating this like a normal number line, it is easier to think of it as a **grid with a fixed number of lines** that can stretch or shrink.
+* **The Exponent** dictates the scale or boundaries of the grid. For example, when the exponent is set to \\2^{0}\\, the grid spans the specific window between `1.0` and `2.0`. When the exponent increases to \\2^{16}\\, the exact same grid layout stretches to span the much larger window between `65,536.0` and `131,072.0`.
 
-* **The Exponent** changes the total size of your grid (e.g., from microscopic to astronomical).
-* **The Mantissa** always has the exact same number of grid lines to split up whatever size the exponent chose.
+* **The Mantissa** provides a fixed precision budget to divide the window established by the exponent. In a standard \\(\text{Float32}\\) architecture, the mantissa utilizes 23 physical bits (plus one implicit leading bit) to provide 24 bits of resolution. This means that regardless of the scale chosen by the exponent, the grid is always divided into exactly \\(2^{24}\\) (\\(16,777,216\\)) uniformly spaced steps.
 
-### The Non-Uniform Number Line
+Because the number of internal grid lines remains constant while the boundaries scale geometrically, the density of representable numbers is fundamentally non-uniform. The table below maps how this fixed budget of \\(2^{24}\\) steps alters the resolution across different numerical ranges:
 
-Because the number of grid lines is fixed but the size of the grid changes, numbers are not spaced out evenly.
-    Near Zero (High Density)                    Large Values (Low Density)
-|--|--|--|--|--|--|--|--|               |-------|-------|-------|-------|
--10-9                     10-9          131,072.0                       131,072.01
-(Microscopic step size)                  (Coarse step size: ~0.0078)
+| Exponent Scale (Window) | Total Window Width | Number of Grid Steps (Resolution) | Step Size (Gap Between Numbers) | Density Context |
+| :--- | :--- | :--- | :--- | :--- |
+| **\(2^0\)** (`1.0` to `2.0`) | `1.0` | \(2^{24}\) (\(16,777,216\)) | \(\sim 5.96 \times 10^{-8}\) | High Density (Precise tracking near normalized zero) |
+| **\(2^{16}\)** (`65,536.0` to `131,072.0`) | `65,536.0` | \(2^{24}\) (\(16,777,216\)) | `0.00390625` | Coarse Density (Stretched capacity for large activations) |
 
-* **Near Zero (High Precision):** When dealing with tiny numbers, the grid shrinks down to fit a very small space. Because the grid lines are squeezed together, the gaps between numbers are incredibly microscopic (\(\sim10^{-9}\)). You have massive precision.
-* **Large Values (Low Precision):** When a number explodes to a massive value like \(131,072.0\), the grid stretches to fit that scale. Because the same number of grid lines are now stretched over a massive distance, the gaps between numbers balloon up to a much coarser step size (\(0.0078125\)).
+### Key Trade-Offs of Non-Uniformity
+
+* **Near-Zero Precision:** When values reside in smaller exponent windows, the fixed allocation of \\(16,777,216\\) steps is squeezed into a tight interval, resulting in highly dense, microscopic step sizes.
+* **Large Magnitude Tolerance:** When a value scales up to a window like \\(131,072.0\\), those same \\(16,777,216\\) steps must stretch across a massive numerical span. The step size balloons to a coarser gap, sacrificing sub-decimal precision to prevent register overflow.
 
 For deep neural networks, this uneven spacing is a massive advantage:
 1. **In backpropagation**, tiny gradients near zero get hyper-precise updates without getting rounded to zero.
