@@ -4,11 +4,11 @@
 
 ## The Mapping Problem
 
-A quantization grid provides a fixed number of integer levels spanning a range. But a question remains unanswered. Given a range of real values — say, activations that fall between -2.3 and 5.1 — and 256 integers (0 through 255), how do you decide which integer represents which real value?
+A quantization grid provides a fixed number of integer levels spanning a target range. However, given a continuous range of real values—for example, activations distributed between -2.3 and 5.1—and a discrete budget of 256 integers (0 through 255), we must establish a deterministic rule to map real values to specific integers.
 
-Two things must be determined. First, how wide each step on the grid is — this controls the spacing between representable values. Second, where the grid sits relative to real zero — this controls which real value maps to which integer.
+To solve this mapping problem, two parameters must be determined. First, we define the width of each step on the grid, which controls the resolution and spacing between representable values. Second, we determine where the grid sits relative to real zero, which ensures that floating-point zero maps precisely to an integer value.
 
-These two quantities are called *scale* and *zero-point*. Together they fully define the mapping between real numbers and quantized integers. Once set, they become permanent. Every subsequent computation in the quantized model depends on their exact values.
+These two quantities are called *scale* and *zero-point*. Together, they fully define the affine mapping between real numbers and quantized integers. Once calculated during calibration, these parameters are fixed; every subsequent hardware instruction in the quantized model depends on their exact values.
 
 ---
 
@@ -34,9 +34,7 @@ The scale determines spacing, but not position. A grid with step size 0.02902 co
 
 $$Z = \text{round}\!\left(\frac{-r_{\min}}{S}\right) = \text{round}\!\left(\frac{2.3}{0.02902}\right) = \text{round}(79.26) = 79$$
 
-We use round-to-nearest (not floor or ceil) because it minimizes the error in representing zero: 79.26 is closer to 79 than to 80, so rounding to 79 gives the smallest zero-point error.
-
-Integer 79 represents real zero. Integers below 79 represent negative real values. Integers above 79 represent positive real values. The grid is now positioned.
+We use round-to-nearest (rather than floor or ceiling functions) to minimize representation error around zero. Because 79.26 is closer to 79 than to 80, selecting 79 yields the lowest possible quantization error for zero. Consequently, the integer 79 represents real zero, integers below 79 represent negative real values, and integers above 79 represent positive real values, fully positioning the grid.
 
 ---
 
@@ -75,17 +73,16 @@ Dequantized: \\(0.02902 \times (0 - 79) = -2.292\\). The boundary value reconstr
 
 ## Invariant: Zero Must Be Exactly Representable
 
-In the example above, real 0.0 mapped to integer 79 and dequantized back to exactly 0.0. This is not a coincidence — it is a requirement.
+In the previous example, real 0.0 mapped perfectly to integer 79 and dequantized back to exactly 0.0. This exact mapping is a strict mathematical requirement rather than a statistical coincidence. If real zero does not map to an exact integer, systematic offsets introduce errors throughout the computation graph.
 
-If real zero does not map to an exact integer, systematic offsets appear throughout the computation:
+### Accumulation of Systematic Offsets
+Consider multiplying an activation tensor by a weight tensor where the weight should be zero. In standard float32, this operation evaluates to exactly zero. However, if the quantized representation of zero shifts to a non-zero value (e.g., 0.003 because zero falls between two discrete grid points), every zeroed multiplication injects a minor offset. Across thousands of MAC (Multiply-Accumulate) operations within a single dense layer, these small residual errors compound into significant noise.
 
-**Multiplication by zero produces nonzero results.** Consider multiplying an activation by a weight that should be zero. In float32, the result is exactly zero. If the quantized representation of zero is actually 0.003 (because zero falls between two grid points), every "zero" multiplication produces 0.003 instead. Across thousands of such operations in a single layer, these phantom values accumulate.
+### Shift in Non-Linear Boundaries
+Non-linear activation functions like ReLU depend on sharp zero boundaries, outputting zero for negative inputs and passing positive inputs through unchanged. If quantized zero carries an error, the boundary between an active and inactive neuron shifts. This shift causes inactive neurons to leak signals, while weakly active neurons are suppressed prematurely.
 
-**ReLU boundaries shift.** ReLU outputs zero for negative inputs and passes positive inputs through. If quantized zero is not exact, the boundary between "active" and "inactive" shifts by the zero-point error. Neurons that should be inactive leak signal. Neurons that should be active are suppressed.
-
-**Bias terms drift.** Bias values are added directly to accumulations. If the zero representation carries error, every bias addition injects a small offset. Over many layers, these offsets compound.
-
-Exact-zero mapping is a correctness invariant for affine quantization. Without it, every operation that touches zero — and in a typical network, that is most of them — requires explicit compensation terms.
+### Bias Term Drift
+Bias values are added directly to accumulation registers. If the zero-point representation introduces a systematic error, every bias addition injects an unintended constant offset. Across deep architectures, these layer-by-layer offsets compound, degrading model accuracy. Exact-zero mapping serves as a fundamental correctness invariant for affine quantization; without it, every operation touching zero would require explicit, hardware-inefficient compensation terms.
 
 ---
 
@@ -133,27 +130,26 @@ The integer dot product is only the first term; zero-points introduce three addi
 
 These corrections add two extra vector reductions and a scalar add to *every single matrix multiply in the model*. For a [4096 × 4096] weight matrix, each output row requires summing 4096 quantized weights and 4096 quantized inputs — per output element, per layer, per inference.
 
-**Worked example: the correction terms in practice.** Suppose a tiny dot product with \\(N = 3\\): weights \\(q_w = [8, -6, 3]\\) with \\(Z_w = 2\\), inputs \\(q_x = [4, 7, -5]\\) with \\(Z_x = 1\\).
+### Correction Terms in Practice
+Consider a small-scale dot product where \\(N = 3\\), utilizing weights \\(q_w = [8, -6, 3]\\) with \\(Z_w = 2\\), and inputs \\(q_x = [4, 7, -5]\\) with \\(Z_x = 1\\). The calculation resolves as follows:
 
-- The integer dot product (first term): \\(8 \times 4 + (-6) \times 7 + 3 \times (-5) = 32 - 42 - 15 = -25\\)
-- Correction 1: \\(-Z_x \sum q_{w_i} = -1 \times (8 + (-6) + 3) = -1 \times 5 = -5\\)
-- Correction 2: \\(-Z_w \sum q_{x_i} = -2 \times (4 + 7 + (-5)) = -2 \times 6 = -12\\)
-- Correction 3: \\(N \cdot Z_w \cdot Z_x = 3 \times 2 \times 1 = 6\\)
-- Full result: \\(-25 - 5 - 12 + 6 = -36\\)
+* **Integer Dot Product (Term 1):** \\(8 \times 4 + (-6) \times 7 + 3 \times (-5) = 32 - 42 - 15 = -25\\)
+* **Correction 1:** \\(-Z_x \sum q_{w_i} = -1 \times (8 + (-6) + 3) = -1 \times 5 = -5\\)
+* **Correction 2:** \\(-Z_w \sum q_{x_i} = -2 \times (4 + 7 + (-5)) = -2 \times 6 = -12\\)
+* **Correction 3:** \\(N \cdot Z_w \cdot Z_x = 3 \times 2 \times 1 = 6\\)
+* **Full Resolution:** \\(-25 - 5 - 12 + 6 = -36\\)
 
-The integer dot product alone gives \\(-25\\). The true result (after corrections) is \\(-36\\). Getting it wrong by omitting corrections means a 31% error — on every output element. Now imagine this at \\(N = 4096\\): the three correction terms involve a 4096-element weight sum, a 4096-element input sum, and a scalar, all computed per output element.
+Omitting the zero-point correction terms yields -25 instead of the mathematically correct value of -36, introducing an error of approximately 31% on a single output element. At production scale (\\(N = 4096\\)), managing these corrections becomes a critical performance consideration.
 
-One partial mitigation: \\(\sum q_{w_i}\\) depends only on weights and can be precomputed once per output channel during model preparation. But \\(\sum q_{x_i}\\) depends on the input and must be computed at runtime for every inference.
+While the weight reduction term (\\(\sum q_{w_i}\\)) depends entirely on static parameters and can be precomputed once during model compilation, the activation reduction term (\\(\sum q_{x_i}\\)) depends on dynamic model inputs and must be evaluated at runtime for every inference pass.
 
-When both zero-points are zero (\\(Z_w = 0\\), \\(Z_x = 0\\)), all three correction terms vanish. The entire operation collapses to:
+When both zero-points are forced to zero (\\(Z_w = 0\\) and \\(Z_x = 0\\)), all three correction terms vanish. The entire equation collapses to a single optimized operation:
 
 $$S_w S_x \sum q_{w_i} q_{x_i}$$
 
-A single integer dot product. No corrections. The hardware executes one fused multiply-accumulate instruction per pair of values — exactly what the int8 datapath in Chapter 4 was built for.
+By removing the correction overhead, the underlying hardware can execute a single fused multiply-accumulate instruction per value pair, leveraging the maximized throughput of integer execution pipelines. Hardware preference for symmetric layouts stems directly from this structural efficiency rather than conceptual simplicity.
 
-Asymmetric quantization captures the range more precisely but adds three correction terms to every multiply-accumulate operation. Symmetric quantization wastes some range but eliminates those corrections entirely. In some backends, the correction overhead in a 24-layer transformer with asymmetric quantization on both weights and activations can account for a meaningful fraction of total int8 compute time — the exact cost depends on the kernel implementation (FBGEMM, QNNPACK, TensorRT, etc.) and how aggressively weight-sums are precomputed.
-
-Hardware prefers symmetric quantization not because it is conceptually simpler, but because it is structurally cheaper to execute.
+Asymmetric quantization captures the dynamic range more precisely but introduces three arithmetic correction terms to every multiply-accumulate operation. Conversely, symmetric quantization sacrifices a portion of the representational range but eliminates these computational corrections entirely. In production backends, the correction overhead in a 24-layer transformer utilizing fully asymmetric quantization on both weights and activations can account for a significant percentage of the total int8 execution time. The precise performance penalty depends heavily on the specific kernel implementation (such as FBGEMM, QNNPACK, or TensorRT) and how aggressively the static weight-sums are precomputed during model compilation.
 
 ### The Practical Convention: Symmetric Weights, Asymmetric Activations
 
