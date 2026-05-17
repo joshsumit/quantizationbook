@@ -2,15 +2,13 @@
 
 ## Why This Chapter Exists
 
-Quantization can be understood correctly only after establishing what is being compressed. In modern deep-learning systems, that baseline representation is typically Float32.
-
-This chapter develops a rigorous yet accessible understanding of Float32 and then contrasts it with INT8 to identify precisely where quantization error is introduced.
+This chapter establishes the numerical foundations required for the rest of the book. It explains how Float32 represents values in hardware and then uses that foundation to make later quantization behavior easier to interpret.
 
 ---
 
 ## 1. Fixed-Point vs Floating-Point
 
-Consider an 8-digit fixed-point representation in which the radix point is permanently fixed at the midpoint:
+Consider an 8-digit fixed-point representation in which the radix point is permanently fixed at the midpoint. Here, the radix point is the separator between the whole-number portion and the fractional portion.
 
 ```text
 [d][d][d][d].[d][d][d][d]
@@ -23,7 +21,7 @@ This format can represent values such as `0012.5000`, but it fails at both numer
 
 Floating-point addresses this limitation by storing:
 
-1. Significant information (fraction bits plus an implied leading 1 for normalized values).
+1. Significant information (precision bits).
 2. A scale term (exponent).
 
 This is the same principle as scientific notation:
@@ -34,13 +32,26 @@ This is the same principle as scientific notation:
 5.3 \times 10^{-11}
 \\]
 
-Digital hardware implements this in base-2 rather than base-10.
+Digital hardware implements this in base-2 rather than base-10, but the structural idea remains the same: store a sign, store a scale factor, and store precision bits.
 
 ---
 
 ## 2. Float32 Bit Layout (IEEE-754)
 
-Float32 uses 32 bits partitioned into three fields:
+Float32 is designed to preserve two properties at the same time:
+
+1. Large dynamic range (the ability to represent both very small and very large magnitudes).
+2. Useful local precision within each magnitude range.
+
+To achieve this, a 32-bit word is split into three coordinated parts:
+
+1. Sign information,
+2. Scale information, and
+3. Precision information.
+
+In IEEE-754 notation, these are stored as `Sign`, `Exponent`, and `Fraction`.
+
+The bit layout is:
 
 ```text
 31 30          23 22                                 0
@@ -50,31 +61,62 @@ Float32 uses 32 bits partitioned into three fields:
  1 bit   8 bits                 23 bits
 ```
 
-Its numerical value is defined as:
+Meaning of each field:
+
+1. `Sign (S)`: controls polarity (`0` positive, `1` negative).
+2. `Exponent (E)`: selects the power-of-two scale window.
+3. `Fraction`: stores local detail within the selected window.
+
+Before using the formulas, one concept must be explicit: **normalized numbers**.
+
+A normalized binary value is written with exactly one non-zero digit to the left of the binary point. In base-2, that digit is always `1`.
+
+Examples:
+
+1. `1.01 \times 2^3` is normalized.
+2. `0.101 \times 2^4` is not normalized (it should be rewritten as `1.01 \times 2^3`).
+
+Because the leading digit is always `1` for normalized values, IEEE-754 does not store that bit explicitly. This is called the **implicit leading 1**.
+
+Why this matters:
+
+1. One bit is saved in storage.
+2. Effective precision increases by one bit.
+
+Therefore, in Float32, the stored 23-bit fraction behaves like 24 bits of precision for normalized numbers (implicit `1` plus 23 stored bits). The formal value equation is:
+
+The term $(-1)^S$ in this equation acts as a sign switch:
+
+1. If `S = 0`, then $(-1)^S = +1$.
+2. If `S = 1`, then $(-1)^S = -1$.
+
+So this factor applies positive or negative sign to the final value.
 
 \\[
 \\text{Value} = (-1)^S \times \\text{Significand} \times 2^{(E - 127)}
 \\]
 
-For normalized Float32 values:
+Float32 stores exponent using a bias of `127` so that both positive and negative real exponents can be represented with an unsigned 8-bit field.
 
-\\[
-\\text{Significand} = 1 + \\text{Fraction}
-\\]
+Interpretation examples:
 
-Where:
+1. Stored exponent `E = 127` means real exponent `0`.
+2. Stored exponent `E = 128` means real exponent `+1`.
+3. Stored exponent `E = 126` means real exponent `-1`.
 
-1. `S` is the sign bit (`0` for positive, `1` for negative).
-2. `E` is the stored exponent (with bias 127).
-3. `Fraction` is the 23-bit stored field to the right of the binary point.
+So the stored field acts like a shifted exponent scale centered around 127.
+
+\[
+	ext{Significand} = 1 + \text{Fraction}
+\]
 
 Terminology note:
 
-1. `Fraction` refers to the stored bit field.
+	\\text{Significand} = 1 + \text{Fraction} 
 2. `Significand` refers to the effective precision value used in computation.
 3. `Mantissa` is a legacy informal term; this chapter uses `Fraction` and `Significand` for precision and clarity.
 
-Because normalized binary numbers are of the form `1.xxxxx`, the leading `1` is implicit. Consequently, Float32 provides 24 effective bits of precision (1 implicit + 23 stored).
+This is why normalized Float32 provides 24 effective bits of precision (1 implicit + 23 stored), even though only 23 fraction bits are physically present in memory.
 
 ---
 
@@ -134,7 +176,7 @@ For a fixed exponent, normalized values lie within a window:
 
 Within each window, Float32 provides exactly $2^{23}$ distinct normalized values, because the stored fraction field has 23 bits.
 
-The spacing (ULP) in that window is:
+The spacing in that window is called ULP (Unit in the Last Place), which means the smallest gap between adjacent representable values in that local range:
 
 \[
 \Delta_e = 2^{e-23}
@@ -165,7 +207,14 @@ This trade-off is highly useful in machine learning:
 
 INT8 provides exactly 256 discrete codes.
 
+Quantization maps a continuous floating-point range into a finite set of integer codes.
+
 After quantization, those 256 codes must cover a chosen real range `[r_min, r_max]` uniformly.
+
+Here:
+
+1. `r_min` is the smallest real value chosen for coverage.
+2. `r_max` is the largest real value chosen for coverage.
 
 The step size (scale) is:
 
