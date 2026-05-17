@@ -6,7 +6,7 @@ To understand quantization, we first need to understand the default number syste
 
 ### The Problem with Fixed Decimals
 
-In a hardware register restricted to 8 decimal digits, implementing a fixed-point system requires permanently locking the radix point at a predetermined position- for example, directly in the center. This design enforces a rigid structural split:
+In a hardware register restricted to 8 decimal digits (this example uses decimal digits for intuition; real hardware operates in binary bits), implementing a fixed-point system requires permanently locking the radix point (decimal point in base-10) at a predetermined position— for example, directly in the center. This design enforces a rigid structural split:
 [ integer ][ integer ][ integer ][ integer ] . [ fraction ][ fraction ][ fraction ][ fraction ]
 
 This layout allocates exactly four digits for whole numbers and four digits for fractional precision. While it can accurately store a value like 0012.5000 or 0000.0075, this rigid structure imposes two fundamental limitations:
@@ -15,28 +15,28 @@ This layout allocates exactly four digits for whole numbers and four digits for 
 
 **Inability to represent high precision:** A minute subatomic measurement like 0.000000000053 cannot be stored because the fractional capacity cuts off after just four digits.
 
-To overcome this limitation, computer architectures utilize floating-point representation rather than fixed-point constraints, building upon the principles of Scientific Notation. Instead of mapping leading or trailing zeros to physical registers, values are expressed via a normalized significand and an exponent:
+To overcome this limitation, we need a way to reuse the same digits across vastly different scales. This is exactly what scientific notation does. Instead of mapping leading or trailing zeros to physical registers, values are expressed via a normalized significand and an exponent:
 
 \\[ 2.99792458 \times 10^8 \\]
 \\[ 5.3 \times 10^{-11} \\]
 
-By allowing the radix point to "float" dynamically based on a multiplier (the power of 10), a constrained budget of digits can represent an incredibly vast dynamic range. Modern computing hardware implements this exact concept using base-2 (binary) logic, standardized universally under the IEEE-754 specification.
+By allowing the radix point to "float" dynamically based on a multiplier (the power of 10), a constrained budget of digits can represent an incredibly vast dynamic range. In binary, the same idea looks like: \\(1.011 \times 2^8\\) (where the base is 2 instead of 10). Modern computing hardware implements this exact concept using base-2 (binary) logic, standardized universally under the IEEE-754 specification.
 
 ---
 
 ## The Floating Dynamic Range
 
-A standard \\(\text{Float32}\\) number is split into three parts: a **Sign bit** (+ or -), an **Exponent** (the multiplier), and a **Mantissa** (the precision budget). Instead of a continuous, uniform number line, this mechanism is best modeled as a **discrete grid with a fixed number of intervals** that scales dynamically.
+A standard \\(\text{Float32}\\) number is split into three parts: a **Sign bit** (+ or -), an **Exponent** (the multiplier), and a **Mantissa** (the precision budget). Instead of a continuous, uniform number line, this mechanism is best modeled as a **discrete grid with a fixed number of intervals**. You can think of it like placing a fixed number of equally spaced tick marks on a number line that scales dynamically.
 
-* **The Exponent** dictates the scale or boundaries of the grid. For example, when the exponent is set to \\(2^{0}\\), the grid spans the specific window between `1.0` and `2.0`. When the exponent increases to \\(2^{16}\\), the exact same grid layout stretches to span the much larger window between `65,536.0` and `131,072.0`.
+* **The Exponent** dictates the scale or boundaries of the grid. For example, when the exponent is set to \\(2^{0}\\), the grid spans the specific window between `1.0` and `2.0` (because normalized binary numbers always start with 1.x). When the exponent increases to \\(2^{16}\\), the exact same grid layout stretches to span the much larger window between `65,536.0` and `131,072.0`.
 
-* **The Mantissa** provides a fixed precision budget to divide the window established by the exponent. In a standard \\(\text{Float32}\\) architecture, the mantissa utilizes 23 physical bits (plus one implicit leading bit) to provide 24 bits of resolution. This means that regardless of the scale chosen by the exponent, the grid is always divided into exactly \\(2^{24}\\) (\\(16,777,216\\)) uniformly spaced steps.
+* **The Mantissa** provides a fixed precision budget to divide the window established by the exponent. In a standard \\(\text{Float32}\\) architecture, the mantissa utilizes 23 physical bits (plus one implicit leading bit—a leading 1 that is not stored explicitly but assumed for normalized numbers) to provide 24 bits of resolution. This means that regardless of the scale chosen by the exponent, the grid within each exponent window is always divided into exactly \\(2^{24}\\) (\\(16,777,216\\)) uniformly spaced steps.
 
-Because the number of internal grid lines remains constant while the boundaries scale geometrically, the density of representable numbers is fundamentally non-uniform. The table below maps how this fixed budget of \\(2^{24}\\) steps alters the resolution across different numerical ranges:
+Because the number of internal grid lines remains constant while the boundaries scale geometrically, the density of representable numbers is fundamentally non-uniform. The gap between adjacent numbers roughly scales as \\(2^{(\text{exponent} - 23)}\\). The table below maps how this fixed budget of \\(2^{24}\\) steps alters the resolution across different numerical ranges:
 
 | Exponent Scale (Window) | Total Window Width | Number of Grid Steps (Resolution) | Step Size (Gap Between Numbers) | Density Context |
 | :--- | :--- | :--- | :--- | :--- |
-| **\\(2^0\\)** (`1.0` to `2.0`) | `1.0` | \\(2^{24}\\) (\\(16,777,216\\)) | \\(\sim 5.96 \times 10^{-8}\\) | High Density (Precise tracking near normalized zero) |
+| **\\(2^0\\)** (`1.0` to `2.0`) | `1.0` | \\(2^{24}\\) (\\(16,777,216\\)) | \\(\sim 5.96 \times 10^{-8}\\) | High Density (Precise tracking near 1.0) |
 | **\\(2^{16}\\)** (`65,536.0` to `131,072.0`) | `65,536.0` | \\(2^{24}\\) (\\(16,777,216\\)) | `0.00390625` | Coarse Density (Stretched capacity for large activations) |
 
 ### Key Trade-Offs of Non-Uniformity
@@ -44,7 +44,7 @@ Because the number of internal grid lines remains constant while the boundaries 
 * **Near-Zero Precision:** When values reside in smaller exponent windows, the fixed allocation of \\(16,777,216\\) steps is squeezed into a tight interval, resulting in highly dense, microscopic step sizes.
 * **Large Magnitude Tolerance:** When a value scales up to a window like \\(131,072.0\\), those same \\(16,777,216\\) steps must stretch across a massive numerical span. The step size balloons to a coarser gap, sacrificing sub-decimal precision to prevent register overflow.
 
-For deep neural networks, this uneven spacing is a massive advantage:
+For machine learning contexts (e.g., backpropagation), this uneven spacing is a massive advantage:
 1. **In backpropagation**, tiny gradients near zero get hyper-precise updates without getting rounded to zero.
 2. **For large weights or activations**, the system can handle massive values without hitting an overflow error, even if it sacrifices a little bit of precision to do so.
 
