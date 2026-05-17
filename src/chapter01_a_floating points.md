@@ -1,128 +1,216 @@
-## What Float32 Gives You
+# Chapter 01A: Floating-Point Fundamentals for Quantization
 
-To understand quantization, we first need to understand the default number system used in deep learning: Float32.
+## Why This Chapter Exists
 
-### The Problem with Fixed Decimals
+Quantization can be understood correctly only after establishing what is being compressed. In modern deep-learning systems, that baseline representation is typically Float32.
 
-In a hardware register restricted to 8 decimal digits (this example uses decimal digits for intuition; real hardware operates in binary bits), implementing a fixed-point system requires permanently locking the radix point (decimal point in base-10) at a predetermined position— for example, directly in the center. This design enforces a rigid structural split:
+This chapter develops a rigorous yet accessible understanding of Float32 and then contrasts it with INT8 to identify precisely where quantization error is introduced.
 
-```
-[ integer ][ integer ][ integer ][ integer ] . [ fraction ][ fraction ][ fraction ][ fraction ]
-```
-
-This layout allocates exactly four digits for whole numbers and four digits for fractional precision. While it can accurately store a value like 0012.5000 or 0000.0075, this rigid structure imposes two fundamental limitations:
-
-**Inability to represent large magnitudes:** A value like the speed of light (299,792,458) cannot be stored because only four digits are available before the radix point.
-
-**Inability to represent high precision:** A minute subatomic measurement like 0.000000000053 cannot be stored because the fractional capacity cuts off after just four digits.
-
-To overcome this limitation, we need a way to reuse the same digits across vastly different scales. This is exactly what scientific notation does.
-
-Instead of storing the entire number with the radix point fixed at a predetermined position (as in fixed-point representation), the representation is split into two parts: a **mantissa** (which stores the significant digits) and an **exponent** (which controls the scale by effectively shifting the radix point).
-
-\\[
-2.99792458 \\times 10^8 \\quad (\\text{mantissa} = 2.99792458,\\; \\text{exponent} = 8)
-\\]
-
-\\[
-5.3 \\times 10^{-11} \\quad (\\text{mantissa} = 5.3,\\; \\text{exponent} = -11)
-\\]
-
-Here, the mantissa stores the digits, while the exponent controls the scale of the number.
-
-By separating the number into a mantissa and an exponent, we store the digits and the required scale independently. The exponent specifies how many places the radix point is effectively shifted, allowing the same set of digits to represent values across a vast range.
-
-In binary, the same idea looks like: \\(1.011 \\times 2^8\\) (where the base is 2 instead of 10). Modern computing hardware implements this exact concept using base-2 (binary) logic, standardized universally under the IEEE-754 specification.
-
-### The Floating Dynamic Range
-
-### The Exponent
-The Exponent dictates the scale or boundaries of the grid, but it does not define the range by itself—it scales a *normalized* mantissa. 
-
-A normalized binary number is written in a form where there is exactly one non-zero digit before the radix point. In base-2 (binary), this means every number is written as `1.xxxxx`, where everything after the point is the fractional part. Because of this rule, the mantissa is always constrained to the range:
-
-\\[
-1.0 \\leq \\text{mantissa} < 2.0
-\\]
-
-For example:
-- `1.0101` is normalized  
-- `0.1010` is **not** normalized  (it would be rewritten as `1.010 \\times 2^{-1}`)
-
-This is why the exponent alone does not define the range. Instead, it scales this fixed base interval. The actual values representable for a given exponent are obtained by multiplying the entire normalized range by \\(2^e\\), producing:
-
-\\[
-[2^e,\\; 2^{e+1})
-\\]
-
-To make this concrete, you can visualize the same normalized interval being scaled across different exponent values:
-
-**Normalized Mantissa Interval (before scaling):**
-```
-1.0                                              2.0
-|----|----|----|----|----|----|----|----|----|----|
-```
-
-**Exponent = 0 (scale = \\(2^0\\)) (no scaling):**
-```
-1.0                                              2.0
-|----|----|----|----|----|----|----|----|----|----|
-     very fine spacing (tiny gaps between numbers)
-```
-
-**Exponent = 16 (scale = \\(2^{16}\\)) (scaled up):**
-```
-65536                                            131072
-|----|----|----|----|----|----|----|----|----|----|
-     same number of steps, but much wider gaps
-```
-
-Even though all three views use the *exact same number of representable values*, the exponent stretches or compresses the interval across the number line.
-
-For example:
-- When the exponent is set to \\(0\\), the grid spans the window between `1.0` and `2.0`  
-- When the exponent increases to \\(16\\), the exact same normalized interval is scaled up to span `65,536.0` to `131,072.0`
-
-### The Mantissa 
-The Mantissa provides a fixed precision budget to divide the window established by the exponent. In a standard \\(\\text{Float32}\\) architecture, the mantissa utilizes 23 physical bits (plus one implicit leading bit—a leading `1` that is not stored explicitly but assumed for normalized numbers) to provide 24 bits of resolution. 
-
-This means that regardless of the scale chosen by the exponent, the grid within each exponent window is always divided into exactly \\(2^{24}\\) (\\(16,777,216\\)) uniformly spaced steps.
-
-Because the number of internal grid lines remains constant while the boundaries scale geometrically, the density of representable numbers is fundamentally non-uniform. The gap between adjacent numbers roughly scales as \\(2^{(\text{exponent} - 23)}\\). The table below maps how this fixed budget of \\(2^{24}\\) steps alters the resolution across different numerical ranges:
-
-| Exponent Scale (Window) | Total Window Width | Number of Grid Steps (Resolution) | Step Size (Gap Between Numbers) | Density Context |
-| :--- | :--- | :--- | :--- | :--- |
-| **\\(2^0\\)** (`1.0` to `2.0`) | `1.0` | \\(2^{24}\\) (\\(16,777,216\\)) | \\(\sim 5.96 \\times 10^{-8}\\) | High Density (Precise tracking near 1.0) |
-| **\\(2^{16}\\)** (`65,536.0` to `131,072.0`) | `65,536.0` | \\(2^{24}\\) (\\(16,777,216\\)) | `0.00390625` | Coarse Density (Stretched capacity for large activations) |
-
-### Key Trade-Offs of Non-Uniformity
-
-* **Near-Zero Precision:** When values reside in smaller exponent windows, the fixed allocation of \\(16,777,216\\) steps is squeezed into a tight interval, resulting in highly dense, microscopic step sizes.
-* **Large Magnitude Tolerance:** When a value scales up to a window like \\(131,072.0\\), those same \\(16,777,216\\) steps must stretch across a massive numerical span. The step size balloons to a coarser gap, sacrificing sub-decimal precision to prevent register overflow.
-
-For machine learning contexts (e.g., backpropagation), this uneven spacing is a massive advantage:
-1. **In backpropagation**, tiny gradients near zero get hyper-precise updates without getting rounded to zero.
-2. **For large weights or activations**, the system can handle massive values without hitting an overflow error, even if it sacrifices a little bit of precision to do so.
-
-
-*(For a granular, bit-level walkthrough of how a floating-point value is encoded into binary registers under the IEEE-754 specification, refer to **Appendix C: Floating-Point Bit Architecture**).*
 ---
-## What Int8 Gives You
 
-An 8-bit integer (\\(\text{INT8}\\)) provides exactly \\(2^8 = 256\\) distinct representable levels. This integer budget represents the entire numerical pool available to a neural network layer once it undergoes quantization. Unlike floating-point systems, an integer format contains no hidden decimal components, no shifting scaling factors, and no variable density. The 256 unique points are spread completely uniformly across whatever real-world range they are assigned to cover.
+## 1. Fixed-Point vs Floating-Point
 
-To trace how this constraint manifests physically, consider a real-valued activation range bound tightly between \\([-1.0, 1.0]\\). These 256 discrete integer levels must stretch across a total continuous distance of exactly 2.0 units on the real number line. The uniform distance between any two adjacent points on this newly established integer grid is defined as the *step size* (or scale factor, denoted by \\(\Delta\\) or \\(S\\)). This value is derived using the uniform grid blueprint:
+Consider an 8-digit fixed-point representation in which the radix point is permanently fixed at the midpoint:
 
-\\[\Delta = \frac{r_{\max} - r_{\min}}{L - 1}\\]
+```text
+[d][d][d][d].[d][d][d][d]
+```
 
-Within this mathematical framework, \\(L\\) represents the total number of available discrete levels (256 for \\(\text{INT8}\\)), while \\(r_{\max}\\) and \\(r_{\min}\\) represent the boundary limits of the real-world floating-point distribution. The denominator uses \\(L - 1\\) (255) rather than \\(L\\) because the objective is to calculate the precise distance of the gaps *between* the points, rather than counting the points themselves. 
+This format can represent values such as `0012.5000`, but it fails at both numerical extremes:
 
-Evaluating this formula for the \\([-1.0, 1.0]\\) range yields the following step size calculation:
+1. Large magnitudes overflow quickly.
+2. Very small values lose precision quickly.
 
-\\[\Delta = \frac{1.0 - (-1.0)}{256 - 1} = \frac{2.0}{255} \approx 0.007843\\]
+Floating-point addresses this limitation by storing:
 
-Every continuous floating-point activation or weight that passes into this quantized layer is forced to snap onto the nearest uniform point on this 256-level grid. 
+1. Significant information (fraction bits plus an implied leading 1 for normalized values).
+2. A scale term (exponent).
 
-If an incoming floating-point value evaluates to exactly `0.50000`, it lands precisely on a representable grid coordinate. If a subsequent value evaluates to `0.50400`, the uniform step size of `0.007843` is mathematically too wide to differentiate the two inputs. Consequently, the second value snaps to the exact same grid coordinate as the first. 
+This is the same principle as scientific notation:
 
-In the native \\(\text{Float32}\\) domain, these two values represent distinct signals capable of triggering downstream variance in the network. In the quantized \\(\text{INT8}\\) domain, they collapse into identical bit configurations, and the subtle difference between them is permanently erased.
+\[
+2.99792458 \times 10^8,
+\quad
+5.3 \times 10^{-11}
+\]
+
+Digital hardware implements this in base-2 rather than base-10.
+
+---
+
+## 2. Float32 Bit Layout (IEEE-754)
+
+Float32 uses 32 bits partitioned into three fields:
+
+```text
+31 30          23 22                                 0
++---+-------------+------------------------------------+
+| S |  Exponent   |              Fraction              |
++---+-------------+------------------------------------+
+ 1 bit   8 bits                 23 bits
+```
+
+Its numerical value is defined as:
+
+\[
+\\text{Value} = (-1)^S \times \\text{Significand} \times 2^{(E - 127)}
+\]
+
+For normalized Float32 values:
+
+\[
+\\text{Significand} = 1 + \\text{Fraction}
+\]
+
+Where:
+
+1. `S` is the sign bit (`0` for positive, `1` for negative).
+2. `E` is the stored exponent (with bias 127).
+3. `Fraction` is the 23-bit stored field to the right of the binary point.
+
+Terminology note:
+
+1. `Fraction` refers to the stored bit field.
+2. `Significand` refers to the effective precision value used in computation.
+3. `Mantissa` is a legacy informal term; this chapter uses `Fraction` and `Significand` for precision and clarity.
+
+Because normalized binary numbers are of the form `1.xxxxx`, the leading `1` is implicit. Consequently, Float32 provides 24 effective bits of precision (1 implicit + 23 stored).
+
+---
+
+## 3. Worked Encoding Example: 2.5
+
+Step 1: Convert to binary.
+
+\[
+2.5_{10} = 10.1_2
+\]
+
+Step 2: Normalize.
+
+\[
+10.1_2 = 1.01_2 \times 2^1
+\]
+
+Step 3: Build each field.
+
+1. Sign bit: `0` (positive).
+2. True exponent: `1`, therefore stored exponent is `1 + 127 = 128 = 10000000_2`.
+3. Fraction field: bits after `1.` are `01`, padded to 23 bits:
+
+```text
+01000000000000000000000
+```
+
+Step 4: Pack fields.
+
+```text
+0 | 10000000 | 01000000000000000000000
+```
+
+Full 32-bit representation:
+
+```text
+01000000001000000000000000000000
+```
+
+Hexadecimal representation:
+
+```text
+0x40200000
+```
+
+Therefore, `2.5` appears in Float32 memory as `0x40200000`.
+
+---
+
+## 4. Why Float32 Precision Is Non-Uniform
+
+For a fixed exponent, normalized values lie within a window:
+
+\[
+[2^e,\;2^{e+1})
+\]
+
+Within each window, Float32 provides exactly $2^{23}$ distinct normalized values, because the stored fraction field has 23 bits.
+
+The spacing (ULP) in that window is:
+
+\[
+\Delta_e = 2^{e-23}
+\]
+
+Therefore, spacing is deterministic and doubles whenever $e$ increases by 1.
+
+Examples:
+
+1. In $[1,2)$, $e=0$, so spacing is $2^{-23} \approx 1.19 \times 10^{-7}$.
+2. In $[1024,2048)$, $e=10$, so spacing is $2^{-13} = 1/8192 \approx 1.22 \times 10^{-4}$.
+
+Both windows contain the same number of representable values ($2^{23}$), but the larger window has wider gaps between adjacent values.
+
+Practical consequence:
+
+1. Near small magnitudes, numerical resolution is fine.
+2. At large magnitudes, numerical resolution is coarser.
+
+This trade-off is highly useful in machine learning:
+
+1. Small gradients remain representable.
+2. Large activations remain representable without immediate overflow.
+
+---
+
+## 5. What Changes in INT8
+
+INT8 provides exactly 256 discrete codes.
+
+After quantization, those 256 codes must cover a chosen real range `[r_min, r_max]` uniformly.
+
+The step size (scale) is:
+
+\[
+\Delta = \frac{r_{\max} - r_{\min}}{255}
+\]
+
+For example, with range `[-1.0, 1.0]`:
+
+\[
+\Delta = \frac{1.0 - (-1.0)}{255} = \frac{2}{255} \approx 0.007843
+\]
+
+Values separated by less than approximately `0.007843` may map to the same quantized code.
+
+Example:
+
+1. `0.50000` and `0.50400` may quantize to the same INT8 level.
+2. Their difference is then lost.
+
+This loss of distinguishability is a primary source of quantization error.
+
+---
+
+## 6. Float16 and BFloat16 at a Glance
+
+When reducing precision from Float32, most schemes primarily reduce fraction precision.
+
+| Format | Exponent Bits | Fraction Bits | Dynamic Range | Local Precision |
+| :-- | :--: | :--: | :-- | :-- |
+| Float32 | 8 | 23 | Very wide | High |
+| Float16 | 5 | 10 | Narrower | Medium |
+| BFloat16 | 8 | 7 | Wide (close to Float32) | Lower |
+
+Interpretation:
+
+1. More exponent bits improve dynamic range.
+2. More fraction bits improve local precision.
+
+---
+
+## 7. Takeaway for Quantization
+
+Float32 derives its practical strength from balancing dynamic range and precision through exponent and fraction fields.
+
+Quantization (for example, INT8) replaces that adaptive floating grid with a much smaller uniform grid. This improves memory efficiency and execution speed but introduces irreversible approximation.
+
+Subsequent chapters formalize this mapping through scale and zero-point and then track how the resulting error propagates through real model pipelines.
