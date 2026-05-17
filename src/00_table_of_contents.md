@@ -15,7 +15,7 @@
 ## Part I — Foundations
 
 1. [Why Quantization Exists](chapter01_why_quantization_exists.md)
-	1.1 [Floating-Point Fundamentals for Quantization](chapter01_a_floating points.md)
+	1.1 [Floating-Point Fundamentals for Quantization](chapter01_a_floating_points.md)
 
 2. [Quantization as a Representational Constraint](chapter02_quantization_as_representational_constraint.md)
 3. [Scale and Zero-Point](chapter03_scale_and_zero_point.md)
