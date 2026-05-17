@@ -8,6 +8,7 @@ To understand quantization, we first need to understand the default number syste
 
 Imagine you are designing a computer register that only has 8 slots to store a regular base-10 decimal number. If you decide to permanently lock the decimal point right in the middle, you create a "fixed-point" system:
 [ integer ][ integer ][ integer ][ integer ] . [ fraction ][ fraction ][ fraction ][ fraction ]
+
 This layout gives you exactly four slots for whole numbers and four slots for fractional details. It can safely store a number like `0012.5000` or `0000.0075`. However, this rigid structure has two fundamental limitations:
 1. You cannot store a very large number like the speed of light (`299,792,458`), because you only have four slots before the decimal point.
 2. You cannot store a very tiny subatomic measurement like `0.000000000053`, because your fractional details cut off after just four slots.
@@ -17,86 +18,28 @@ To solve this limitation, scientists and engineers don't use fixed decimal point
 \\[ 2.99792458 \times 10^8 \\]
 \\[ 5.3 \times 10^{-11} \\]
 
-By letting the decimal point "float" left or right based on a multiplier (the power of 10), a tiny handful of digits can represent either astronomical distances or microscopic subatomic scales. \\(\text{Float32}\\) is simply this exact same scientific notation trick, adapted to run on binary computer hardware.
+By letting the decimal point "float" left or right based on a multiplier (the power of 10), a tiny budget of digits can represent an incredibly vast range of values. Modern computing hardware builds on this exact principle using base-2 (binary) logic under the IEEE-754 standard.
 
-### Inside a 32-Bit Floating-Point Number
+---
 
-When a deep learning model saves an activation or a weight in \\(\text{Float32}\\), the hardware allocates a tiny block of 32 physical bits in memory. Rather than using these 32 bits as one long integer, the computer splits them into three highly specialized functional components:
+## The "Sliding Window" Mental Model
 
-1. **The Sign Bit (1 bit):** A single toggle switch. If the bit is `0`, the value is positive. If the bit is `1`, the value is negative.
-2. **The Exponent (8 bits):** This acts as the multiplier. It tells the computer how many places to shift the binary decimal point. It determines the overall scale or "magnitude" of the value.
-3. **The Mantissa (23 bits):** This stores the actual fractional details of the value (the core digits). It determines the specific precision within that chosen scale.
+In a standard \\(\text{Float32}\\) variable, the computer allocates a budget of 32 bits divided into three distinct functional components: a **Sign bit**, an **Exponent** (the multiplier), and a **Mantissa** (the fractional precision budget). 
 
-To tie these three components together into a single real-world value, the hardware runs them through an exact mathematical blueprint:
+Instead of treating the 32-bit register as a flat number line, it is much more effective to visualize it as a **sliding window hardware engine**:
+* The **Exponent** acts as a coarse control loop. It slides a physical window up and down across an astronomical scale of magnitude (from roughly \\(10^{-38}\\) to \\(10^{38}\\)) by shifting powers of 2.
+* The **Mantissa** acts as a fine control loop. Once the exponent anchors the window to a specific power-of-two bucket, the mantissa uses its fixed allocation of bits to carve up *only that specific window* into uniformly spaced, high-resolution steps.
 
-\\[\text{Value} = (-1)^{\text{sign}} \times 2^{\text{exponent} - 127} \times (1 + \text{fraction})\\]
+### The Non-Uniform Number Line
 
-Do not let the formula overwhelm you. Let us break down its two unique hardware quirks:
-* **The Exponent Bias (-127):** Because our 8 exponent bits are unsigned integers (ranging from 0 to 255), they cannot naturally be negative. To allow our sliding scale to handle tiny fractional numbers, the hardware automatically subtracts 127 from whatever integer is sitting in the exponent slots. If the exponent bits hold the number 128, the true multiplier becomes \\(2^{128 - 127} = 2^1\\).
-* **The Implicit Leading 1 (1 + fraction):** In standard scientific notation, you always format your number so there is exactly one non-zero digit before the decimal point (e.g., you write \\(2.5 \times 10^1\\), never \\(25.0 \times 10^0\\)). Because every valid binary number always starts with a `1`, hardware engineers realized they didn't need to waste precious memory bits saving that `1`. The formula automatically injects it for free during execution. The 23 bits of the mantissa only need to store the fractional details that sit *after* that decimal point.
+Consider how this looks on a real number line. The density of representable \\(\text{Float32}\\) numbers is fundamentally non-uniform:
 
-### Walkthrough: Building the Value 2.5
+* **Scenario A (Near Zero):** When the exponent is small, the sliding window is focused tightly around zero. The mantissa splits this tiny window into billions of microscopic increments. The step size (the distance between one representable float and the absolute next) is ultra-dense, shrinking down to roughly \\(10^{-9}\\) or smaller.
+* **Scenario B (Deep Outliers):** When a model activation explodes out to a large value like \\(131,072.0\\), the exponent slides the window far up the number line. Because the window is now massive, the mantissa must stretch its fixed budget across a huge span. The step size between adjacent representable numbers balloons up to a coarse gap of \\(0.0078125\\).
 
-Let us look at a concrete example to see exactly how these bits interact under the hood. Suppose a neural network layer calculates an output value of exactly `2.5`. 
+For training deep neural networks, this non-uniformity is an absolute superpower. During backpropagation, microscopic gradients near zero can be updated with pristine mathematical precision, while massive weight outliers can coexist in the same tensor without breaking the system register. 
 
-First, we rewrite `2.5` in binary scientific notation:
-
-\\[2.5 = 2^1 \times 1.25\\]
-
-Now, let us map this value directly into our 32-bit memory layout:
-* **Sign Bit:** The value is positive, so the hardware writes a `0`.
-* **Exponent Bits:** We need our multiplier to equal \\(2^1\\). Using our formula's math offset, we calculate what integer needs to be saved in memory: \\(\text{X} - 127 = 1\\), which means \\(\text{X} = 128\\). The hardware converts the integer 128 into binary (`10000000`) and saves it in the 8 exponent slots.
-* **Mantissa Bits:** Our binary fraction part is `.25` (which is exactly \\(1/4\\)). In binary fractional positions, the first slot after the point represents \\(1/2\\) (`0.5`), and the second slot represents \\(1/4\\) (`0.25`). Therefore, the hardware sets the very first mantissa bit to `1` and fills the remaining 22 slots with `0`.
-
-When the computer processor reads this 32-bit pattern out of memory, it instantly evaluates the mathematical blueprint:
-
-\\[\text{Value} = (-1)^0 \times 2^{128 - 127} \times (1 + 0.25) = 1 \times 2^1 \times 1.25 = 2.5\\]
-
-### The Sliding Window Mental Model
-
-Now that we know the physical math rules, we can understand the core representational behavior of \\(\text{Float32}\\). 
-
-You can think of \\(\text{Float32}\\) as a **sliding window** moving across the number line. The exponent bits control the placement of this window, sliding it back and forth between different powers of 2 (such as the interval from 1 to 2, or the interval from 1024 to 2048). 
-
-Each individual interval between two consecutive powers of 2 forms one complete window. The crucial constraint of the system is this: **inside that window, the 23 bits of the mantissa act as a fixed budget of exactly \\(2^{23}\\) (approx. 8.3 million) evenly spaced points.**
-
-
-
-Because our bit budget inside the window is completely fixed at 8.3 million distinct representable values, a powerful rule emerges: **if the window slides out to cover a wider territory on the number line, the gaps between those 8.3 million points must stretch out and grow wider.**
-
-### How Moving Windows Impact Value Density
-
-This sliding mechanism explains a foundational reality of modern computer science: \\(\text{Float32}\\) does not spread its 4.3 billion total bit patterns evenly across the real number line. Instead, it packs them incredibly densely near zero and spreads them further and further apart as values scale upward. 
-
-Let us prove this by looking at two starkly different execution scenarios inside a running model.
-
-**Scenario A: The Exponent Shrinks (High Density near Zero)**
-
-Imagine our model is processing a well-normalized layer where activation values are tiny numbers close to zero. The hardware sets the exponent bits to `120`. According to our formula offset, this places our sliding window between \\(2^{120 - 127} = 2^{-7}\\) (which is \\(1/128 \approx 0.0078125\\)) and the next power of 2, \\(2^{-6}\\) (\\(0.015625\\)). 
-
-The total real-world width of this specific window is incredibly narrow—only `0.0078125` units wide. Because our window must contain exactly \\(2^{23}\\) representable values, the physical spacing between any two adjacent points in this region is:
-
-\\[\text{Spacing (Step Size)} = \frac{0.0078125}{2^{23}} \approx 0.00000000093\\]
-
-Because the gaps between available values are less than one-billionth of a unit wide, the representation in this zone is ultra-dense. The computer can easily distinguish between extremely small differences between values, preserving extremely small differences between values.
-
-**Scenario B: The Exponent Grows (Sparse Spacing at Large Magnitudes)**
-
-Now imagine the network encounters an unnormalized layer or a massive outlier value, causing the exponent bits to scale up to `137`. This shifts our window to cover the territory between \\(2^{137 - 127} = 2^{10}\\) (`1024`) and \\(2^{11}\\) (`2048`). 
-
-The total physical width of this window is now a massive `1,024` units wide. Since the number of points stays completely constant at 8.3 million, increasing the size of the range forces the spacing between points to grow dramatically. Our fixed pool of points must stretch across the entire territory, exploding the distance between adjacent values:
-
-\\[\text{Spacing (Step Size)} = \frac{1024}{2^{23}} \approx 0.000122\\]
-
-Look at what just happened to our system precision. Near zero, our resolution could capture a billionth of a unit. Out past 1,024, the gaps between consecutive representable values have widened by a factor of over 100,000. If two values in this large region differ by a tiny fraction like `0.00001`, \\(\text{Float32}\\) can no longer separate them; they will round to the exact same bit pattern.
-
-### Summary of the Constraints
-
-\\(\text{Float32}\\) does not provide uniform precision. Near zero, values are densely packed and small differences are preserved. At large magnitudes, spacing widens and small differences disappear. 
-
-Float32 does not provide uniform precision. Near zero, values are densely packed and small differences are preserved.
-At large magnitudes, spacing widens and small differences disappear. As long as activations remain near zero, the system behaves like a smooth, continuous space. As values grow, that illusion breaks.
-
+*(For a granular, bit-level walkthrough of how a floating-point value is encoded into binary registers under the IEEE-754 specification, refer to **Appendix A: Floating-Point Bit Architecture**).*
 ---
 ## What Int8 Gives You
 
@@ -117,25 +60,6 @@ Every continuous floating-point activation or weight that passes into this quant
 If an incoming floating-point value evaluates to exactly `0.50000`, it lands precisely on a representable grid coordinate. If a subsequent value evaluates to `0.50400`, the uniform step size of `0.007843` is mathematically too wide to differentiate the two inputs. Consequently, the second value snaps to the exact same grid coordinate as the first. 
 
 In the native \\(\text{Float32}\\) domain, these two values represent distinct signals capable of triggering downstream variance in the network. In the quantized \\(\text{INT8}\\) domain, they collapse into identical bit configurations, and the subtle difference between them is permanently erased.
-
----
-
-## Key Terms — Quick Reference
-
-The following architectural definitions form the core technical vocabulary used throughout this book. While subsequent chapters provide dedicated systems analyses of each mechanism, this reference map illustrates how the components interface within an execution pipeline.
-
-| Term | Meaning | Chapter Reference |
-|---|---|---|
-| **Grid** | The fixed, finite set of representable integer levels determined by bit-width (e.g., 256 levels for 8-bit quantization). | Ch. 2 |
-| **Scale (S / \\(\Delta\\))** | The uniform step size between adjacent grid points used to map real floating-point values to integers and vice versa. | Ch. 3 |
-| **Zero-point (Z)** | An integer offset value that aligns the physical integer grid's zero marker with the true real-valued zero point. | Ch. 3 |
-| **Boundary** | A precise structural intersection in the model graph where the quantization parameters (scale, zero-point) change. | Ch. 6 |
-| **Domain** | The mathematical triple (Scale, Zero-point, Bit-width) that dictates how an integer tensor is interpreted. | Ch. 6 |
-| **Requantization** | The process of downscaling a wide \\(\text{INT32}\\) intermediate accumulator sum back into a standard \\(\text{INT8}\\) layout. | Ch. 7 |
-| **Fusion** | The compilation technique of merging consecutive operators (e.g., MatMul + Bias + ReLU) into a single execution kernel. | Ch. 8 |
-| **Observer** | A diagnostic module injected during calibration to track and record the statistical dynamic range of activations. | Ch. 9 |
-| **Accumulator** | A high-precision hardware register (typically \\(\text{INT32}\\)) used to safely sum partial matrix products without overflow. | Ch. 6 |
-| **Calibration** | The execution of a representative validation dataset through the network to determine optimal activation scale factors. | Ch. 9 |
 
 ---
 
@@ -287,3 +211,22 @@ This degradation is an unyielding physical constraint of low-precision compute a
 Quantization is not a casual software compression flag; it is the forceful execution of neural network logic inside a rigid, finite grid of uniformly spaced numbers. The physical size of the gaps between those numbers is determined entirely by the boundary selections and the available register bit-width.
 
 When evaluating a model for hardware deployment, the primary objective is to resolve a single engineering question: does the chosen uniform step size preserve the core differentiability required for the network to compute accurate predictions? If the step size maintains those differences across every layer block, quantization delivers massive compute speedups and drastic memory reductions with zero loss. If the step size violates those boundaries, the internal representation corrupts. Tracing, predicting, and mitigating those specific points of structural breakdown is the foundational focus of systems engineering.
+
+---
+
+## Key Terms — Quick Reference
+
+The following architectural definitions form the core technical vocabulary used throughout this book. While subsequent chapters provide dedicated systems analyses of each mechanism, this reference map illustrates how the components interface within an execution pipeline.
+
+| Term | Meaning | Chapter Reference |
+|---|---|---|
+| **Grid** | The fixed, finite set of representable integer levels determined by bit-width (e.g., 256 levels for 8-bit quantization). | Ch. 2 |
+| **Scale (S / \\(\Delta\\))** | The uniform step size between adjacent grid points used to map real floating-point values to integers and vice versa. | Ch. 3 |
+| **Zero-point (Z)** | An integer offset value that aligns the physical integer grid's zero marker with the true real-valued zero point. | Ch. 3 |
+| **Boundary** | A precise structural intersection in the model graph where the quantization parameters (scale, zero-point) change. | Ch. 6 |
+| **Domain** | The mathematical triple (Scale, Zero-point, Bit-width) that dictates how an integer tensor is interpreted. | Ch. 6 |
+| **Requantization** | The process of downscaling a wide \\(\text{INT32}\\) intermediate accumulator sum back into a standard \\(\text{INT8}\\) layout. | Ch. 7 |
+| **Fusion** | The compilation technique of merging consecutive operators (e.g., MatMul + Bias + ReLU) into a single execution kernel. | Ch. 8 |
+| **Observer** | A diagnostic module injected during calibration to track and record the statistical dynamic range of activations. | Ch. 9 |
+| **Accumulator** | A high-precision hardware register (typically \\(\text{INT32}\\)) used to safely sum partial matrix products without overflow. | Ch. 6 |
+| **Calibration** | The execution of a representative validation dataset through the network to determine optimal activation scale factors. | Ch. 9 |
