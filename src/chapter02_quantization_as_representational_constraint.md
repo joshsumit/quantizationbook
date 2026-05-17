@@ -28,9 +28,29 @@ By allowing the radix point to "float" dynamically based on a multiplier (the po
 
 A standard \\(\text{Float32}\\) number is split into three parts: a **Sign bit** (+ or -), an **Exponent** (the multiplier), and a **Mantissa** (the precision budget). Instead of a continuous, uniform number line, this mechanism is best modeled as a **discrete grid with a fixed number of intervals**. You can think of it like placing a fixed number of equally spaced tick marks on a number line that scales dynamically.
 
-* **The Exponent** dictates the scale or boundaries of the grid. For example, when the exponent is set to \\(2^{0}\\), the grid spans the specific window between `1.0` and `2.0` (because normalized binary numbers always start with 1.x). When the exponent increases to \\(2^{16}\\), the exact same grid layout stretches to span the much larger window between `65,536.0` and `131,072.0`.
+
+* **The Exponent** dictates the scale or boundaries of the grid, but it does not define the range by itself—it scales a *normalized* mantissa.
+
+A normalized binary number is written in a form where there is exactly one non-zero digit before the radix point. In base-2 (binary), this means every number is written as `1.xxxxx`, where everything after the point is the fractional part. Because of this rule, the mantissa is always constrained to the range:
+
+\\[
+1.0 \leq \text{mantissa} < 2.0
+\\]
+
+For example:
+- `1.0101` is normalized  
+- `0.1010` is **not** normalized (it would be rewritten as `1.010 \\times 2^{-1}`)
+
+This is why the exponent alone does not define the range. Instead, it scales this fixed base interval. The actual values representable for a given exponent are obtained by multiplying the entire normalized range by \\(2^e\\), producing:
+
+\\[
+[2^e,\; 2^{e+1})
+\\]
+
+For example, when the exponent is set to \\(2^{0}\\), the grid spans the window between `1.0` and `2.0`. When the exponent increases to \\(2^{16}\\), the exact same normalized interval is scaled up, stretching the grid to span the much larger window between `65,536.0` and `131,072.0`.
 
 * **The Mantissa** provides a fixed precision budget to divide the window established by the exponent. In a standard \\(\text{Float32}\\) architecture, the mantissa utilizes 23 physical bits (plus one implicit leading bit—a leading 1 that is not stored explicitly but assumed for normalized numbers) to provide 24 bits of resolution. This means that regardless of the scale chosen by the exponent, the grid within each exponent window is always divided into exactly \\(2^{24}\\) (\\(16,777,216\\)) uniformly spaced steps.
+
 
 Because the number of internal grid lines remains constant while the boundaries scale geometrically, the density of representable numbers is fundamentally non-uniform. The gap between adjacent numbers roughly scales as \\(2^{(\text{exponent} - 23)}\\). The table below maps how this fixed budget of \\(2^{24}\\) steps alters the resolution across different numerical ranges:
 
