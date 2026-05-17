@@ -71,71 +71,10 @@ Before diving into the low-level mechanics of discrete mappings, establishing an
 
 ---
 
-##
+>## Quantization  — End-to-End Pipeline
 
-```mermaid
-flowchart LR
+![Quantization — End-to-End Pipeline](diagrams/pipline.svg)
 
-%% Inputs
-W[Float32 Weights]
-A[Float32 Activations]
-
-%% Weight path
-W -->|Rounding Error| SZ[Scale & Zero-Point\n(Ch.3)]
-SZ --> QW[Int8 Grid\n(Ch.2)]
-
-%% Activation path
-A -->|Clipping Error| OBS[Observer / Calibration\n(Ch.9)]
-OBS --> QA[Int8 Activations]
-
-%% Matmul block
-QW --> MATMUL
-QA --> MATMUL
-
-MATMUL[Int8 × Int8 Matmul\n(Hardware, Ch.4)]
-
-%% Accumulator
-MATMUL --> ACC[Int32 Accumulator\n(Ch.6)]
-
-%% Requantization
-ACC -->|Accumulated Error| REQ[Requantization\n(Ch.7)]
-
-%% Fused ops
-REQ --> FUSED[Fused Ops\n(ReLU, Add, BN)\n(Ch.8)]
-
-%% Output
-FUSED --> OUT[Int8 Output]
-OUT -->|Scale Transition Boundary| NEXT[Next Layer]
-
-```
-
-> **📊 INSERT DIAGRAM: Quantization Mental Model — End-to-End Pipeline**
->
-> A horizontal flow diagram showing the full quantization pipeline for a single layer:
->
-> ```
-> Float32 weights ──→ [Scale & Zero-Point (Ch.3)] ──→ Int8 grid (Ch.2)
->                                                         │
-> Float32 activations ──→ [Observer / Calibration (Ch.9)] ──→ Int8 activations
->                                                         │
->                                              ┌──────────┴──────────┐
->                                              │  Int8 × Int8 Matmul │
->                                              │  (Hardware, Ch.4)   │
->                                              └──────────┬──────────┘
->                                                         │
->                                              Int32 Accumulator (Ch.6)
->                                                         │
->                                              [Requantization (Ch.7)]
->                                                         │
->                                              ┌──────────┴──────────┐
->                                              │  Fused Ops (Ch.8)   │
->                                              │  (ReLU, Add, BN)    │
->                                              └──────────┬──────────┘
->                                                         │
->                                              Int8 output ──→ Next Layer (Boundary)
-> ```
->
-> Annotate each arrow with the type of error it introduces: rounding error at the grid mapping, clipping error at the observer range, and accumulated error at the requantization step. Mark the "boundary" between layers where scale transitions happen.
 
 While mastering every stage of this pipeline immediately is unnecessary, completing Chapter 9 will thoroughly decouple each element of this execution flow. By the conclusion of Appendix B, the tools provided will enable the analysis of an arbitrary real number through this entire silicon pipeline to analytically predict its structural error before running a line of code.
 

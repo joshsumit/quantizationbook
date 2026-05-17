@@ -28,7 +28,7 @@
   </style>
 
   <g transform="translate(40, 45)">
-    <text x="0" y="0" class="title">Quantization: End-to-End Inference Pipeline</text>
+    <text x="0" y="0" class="title">Quantization: End-to-End Pipeline</text>
     <text x="0" y="22" class="subtitle">Algorithmic transformation and discrete hardware constraints across a single layer</text>
   </g>
 
