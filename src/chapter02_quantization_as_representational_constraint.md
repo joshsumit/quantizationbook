@@ -7,7 +7,10 @@ To understand quantization, we first need to understand the default number syste
 ### The Problem with Fixed Decimals
 
 In a hardware register restricted to 8 decimal digits (this example uses decimal digits for intuition; real hardware operates in binary bits), implementing a fixed-point system requires permanently locking the radix point (decimal point in base-10) at a predetermined position— for example, directly in the center. This design enforces a rigid structural split:
+
+```
 [ integer ][ integer ][ integer ][ integer ] . [ fraction ][ fraction ][ fraction ][ fraction ]
+```
 
 This layout allocates exactly four digits for whole numbers and four digits for fractional precision. While it can accurately store a value like 0012.5000 or 0000.0075, this rigid structure imposes two fundamental limitations:
 
@@ -19,6 +22,8 @@ To overcome this limitation, we need a way to reuse the same digits across vastl
 
 \\[ 2.99792458 \times 10^8 \\]
 \\[ 5.3 \times 10^{-11} \\]
+
+Here, the digits stay the same, but the exponent shifts the scale.
 
 By allowing the radix point to "float" dynamically based on a multiplier (the power of 10), a constrained budget of digits can represent an incredibly vast dynamic range. In binary, the same idea looks like: \\(1.011 \times 2^8\\) (where the base is 2 instead of 10). Modern computing hardware implements this exact concept using base-2 (binary) logic, standardized universally under the IEEE-754 specification.
 
