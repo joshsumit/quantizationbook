@@ -51,7 +51,7 @@ The widening gap between compute performance and memory bus throughput represent
 A historical comparison reveals the severity of this divergence. A standard datacenter graphics processor in the early 2000s delivered roughly 1 \\(\text{TFLOP}\\) of peak compute alongside 50 GB/s of memory bandwidth, yielding an operational ratio of \\(1,000\text{ GFLOPs} / 50\text{ GB/s}\\), which equals exactly 20 \\(\text{FLOPs}\\) per byte of transferred data. By 2024, a standard enterprise AI accelerator delivers approximately 2,000 \\(\text{TFLOPs}\\) against 3,000 GB/s of bandwidth, shifting that ratio to \\(2,000,000\text{ GFLOPs} / 3,000\text{ GB/s}\\), or roughly 667 \\(\text{FLOPs}\\) per byte. Because compute capacity grew \\(2,000\times\\) while bandwidth only grew \\(60\times\\), modern chips are over \\(33\times\\) more compute-rich and relatively more bandwidth-starved than their predecessors.
 
 
-Building wider memory buses and scaling faster memory cells runs directly into severe thermal, area, and signal-integrity boundaries that do not scale with the same clean physics as transistor density. The resulting divergence ensures that every successive hardware generation can compute significantly faster than it can feed itself. Quantization accepts this hardware reality by optimizing the information density of every single byte transferred across the bus, making waiting for a hardware-driven salvation an unviable architectural strategy.
+Building wider memory buses and scaling faster memory cells runs directly into severe thermal, area, and signal-integrity boundaries that do not scale with the same clean physics as transistor density. The resulting divergence ensures that every successive hardware generation can compute significantly faster than it can feed itself. Quantization accepts this hardware reality by optimizing the information density of every single byte transferred across the bus, making dependence on future silicon advancements an unviable architectural strategy.
 
 ---
 
@@ -68,6 +68,46 @@ Demystifying this variance—and predicting how specific network architectures b
 ## The Quantization Pipeline at a Glance
 
 Before diving into the low-level mechanics of discrete mappings, establishing an architectural baseline of the end-to-end quantization pipeline provides vital context. The diagram below illustrates how a single tensor layer transforms during execution, with each stage corresponding directly to deep dives found later in this book.
+
+---
+
+##
+
+```mermaid
+flowchart LR
+
+%% Inputs
+W[Float32 Weights]
+A[Float32 Activations]
+
+%% Weight path
+W -->|Rounding Error| SZ[Scale & Zero-Point\n(Ch.3)]
+SZ --> QW[Int8 Grid\n(Ch.2)]
+
+%% Activation path
+A -->|Clipping Error| OBS[Observer / Calibration\n(Ch.9)]
+OBS --> QA[Int8 Activations]
+
+%% Matmul block
+QW --> MATMUL
+QA --> MATMUL
+
+MATMUL[Int8 × Int8 Matmul\n(Hardware, Ch.4)]
+
+%% Accumulator
+MATMUL --> ACC[Int32 Accumulator\n(Ch.6)]
+
+%% Requantization
+ACC -->|Accumulated Error| REQ[Requantization\n(Ch.7)]
+
+%% Fused ops
+REQ --> FUSED[Fused Ops\n(ReLU, Add, BN)\n(Ch.8)]
+
+%% Output
+FUSED --> OUT[Int8 Output]
+OUT -->|Scale Transition Boundary| NEXT[Next Layer]
+
+```
 
 > **📊 INSERT DIAGRAM: Quantization Mental Model — End-to-End Pipeline**
 >
