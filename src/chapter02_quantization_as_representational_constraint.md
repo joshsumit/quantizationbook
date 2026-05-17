@@ -28,7 +28,7 @@ By allowing the radix point to "float" dynamically based on a multiplier (the po
 
 A standard \\(\text{Float32}\\) number is split into three parts: a **Sign bit** (+ or -), an **Exponent** (the multiplier), and a **Mantissa** (the precision budget). Instead of a continuous, uniform number line, this mechanism is best modeled as a **discrete grid with a fixed number of intervals** that scales dynamically.
 
-* **The Exponent** dictates the scale or boundaries of the grid. For example, when the exponent is set to \\2^{0}\\, the grid spans the specific window between `1.0` and `2.0`. When the exponent increases to \\(2^{16}\\), the exact same grid layout stretches to span the much larger window between `65,536.0` and `131,072.0`.
+* **The Exponent** dictates the scale or boundaries of the grid. For example, when the exponent is set to \\(2^{0}\\), the grid spans the specific window between `1.0` and `2.0`. When the exponent increases to \\(2^{16}\\), the exact same grid layout stretches to span the much larger window between `65,536.0` and `131,072.0`.
 
 * **The Mantissa** provides a fixed precision budget to divide the window established by the exponent. In a standard \\(\text{Float32}\\) architecture, the mantissa utilizes 23 physical bits (plus one implicit leading bit) to provide 24 bits of resolution. This means that regardless of the scale chosen by the exponent, the grid is always divided into exactly \\(2^{24}\\) (\\(16,777,216\\)) uniformly spaced steps.
 
@@ -36,8 +36,8 @@ Because the number of internal grid lines remains constant while the boundaries 
 
 | Exponent Scale (Window) | Total Window Width | Number of Grid Steps (Resolution) | Step Size (Gap Between Numbers) | Density Context |
 | :--- | :--- | :--- | :--- | :--- |
-| **\(2^0\)** (`1.0` to `2.0`) | `1.0` | \(2^{24}\) (\(16,777,216\)) | \(\sim 5.96 \times 10^{-8}\) | High Density (Precise tracking near normalized zero) |
-| **\(2^{16}\)** (`65,536.0` to `131,072.0`) | `65,536.0` | \(2^{24}\) (\(16,777,216\)) | `0.00390625` | Coarse Density (Stretched capacity for large activations) |
+| **\\(2^0\\)** (`1.0` to `2.0`) | `1.0` | \\(2^{24}\\) (\\(16,777,216\\)) | \\(\sim 5.96 \times 10^{-8}\\) | High Density (Precise tracking near normalized zero) |
+| **\\(2^{16}\\)** (`65,536.0` to `131,072.0`) | `65,536.0` | \\(2^{24}\\) (\\(16,777,216\\)) | `0.00390625` | Coarse Density (Stretched capacity for large activations) |
 
 ### Key Trade-Offs of Non-Uniformity
 
