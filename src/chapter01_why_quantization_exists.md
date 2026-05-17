@@ -73,7 +73,9 @@ Before diving into the low-level mechanics of discrete mappings, establishing an
 
 >## Quantization  — End-to-End Pipeline
 
-![Quantization — End-to-End Pipeline](diagrams/pipline.svg)
+<div style="background:#121214; padding:14px; border-radius:10px;">
+	<img src="diagrams/pipline.svg" alt="Quantization — End-to-End Pipeline" style="width:100%; height:auto; display:block;" />
+</div>
 
 
 While mastering every stage of this pipeline immediately is unnecessary, completing Chapter 9 will thoroughly decouple each element of this execution flow. By the conclusion of Appendix B, the tools provided will enable the analysis of an arbitrary real number through this entire silicon pipeline to analytically predict its structural error before running a line of code.
