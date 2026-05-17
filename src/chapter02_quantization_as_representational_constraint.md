@@ -18,12 +18,12 @@ This layout allocates exactly four digits for whole numbers and four digits for 
 
 **Inability to represent high precision:** A minute subatomic measurement like 0.000000000053 cannot be stored because the fractional capacity cuts off after just four digits.
 
-To overcome this limitation, we need a way to reuse the same digits across vastly different scales. This is exactly what scientific notation does. Instead of mapping leading or trailing zeros to physical registers, values are expressed via a normalized significand and an exponent:
+To overcome this limitation, we need a way to reuse the same digits across vastly different scales. This is exactly what scientific notation does. Instead of storing the entire number with the radix point fixed at a predetermined position (as in fixed-point representation), the representation is split into two parts: a **mantissa** (which stores the significant digits) and an **exponent** (which controls the scale by effectively shifting the radix point).
 
-\\[ 2.99792458 \times 10^8 \\]
-\\[ 5.3 \times 10^{-11} \\]
+\\[ 2.99792458 \times 10^8 \\quad (\text{mantissa} = 2.99792458,\; \text{exponent} = 8) \\]
+\\[ 5.3 \times 10^{-11} \\quad (\text{mantissa} = 5.3,\; \text{exponent} = -11) \\]
 
-Here, the digits stay the same, but the exponent shifts the scale.
+Here, the mantissa stores the digits, while the exponent controls the scale of the number.
 
 By allowing the radix point to "float" dynamically based on a multiplier (the power of 10), a constrained budget of digits can represent an incredibly vast dynamic range. In binary, the same idea looks like: \\(1.011 \times 2^8\\) (where the base is 2 instead of 10). Modern computing hardware implements this exact concept using base-2 (binary) logic, standardized universally under the IEEE-754 specification.
 
