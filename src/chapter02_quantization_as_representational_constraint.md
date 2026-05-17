@@ -6,38 +6,49 @@ To understand quantization, we first need to understand the default number syste
 
 ### The Problem with Fixed Decimals
 
-Imagine you are designing a computer register that only has 8 slots to store a regular base-10 decimal number. If you decide to permanently lock the decimal point right in the middle, you create a "fixed-point" system:
+In a hardware register restricted to 8 decimal digits, implementing a fixed-point system requires permanently locking the radix point at a predetermined position- for example, directly in the center. This design enforces a rigid structural split:
 [ integer ][ integer ][ integer ][ integer ] . [ fraction ][ fraction ][ fraction ][ fraction ]
 
-This layout gives you exactly four slots for whole numbers and four slots for fractional details. It can safely store a number like `0012.5000` or `0000.0075`. However, this rigid structure has two fundamental limitations:
-1. You cannot store a very large number like the speed of light (`299,792,458`), because you only have four slots before the decimal point.
-2. You cannot store a very tiny subatomic measurement like `0.000000000053`, because your fractional details cut off after just four slots.
+This layout allocates exactly four digits for whole numbers and four digits for fractional precision. While it can accurately store a value like 0012.5000 or 0000.0075, this rigid structure imposes two fundamental limitations:
 
-To solve this limitation, scientists and engineers don't use fixed decimal points. Instead, they use **Scientific Notation**. Instead of writing out endless zeros, they write:
+**Inability to represent large magnitudes:** A value like the speed of light (299,792,458) cannot be stored because only four digits are available before the radix point.
+
+**Inability to represent high precision:** A minute subatomic measurement like 0.000000000053 cannot be stored because the fractional capacity cuts off after just four digits.
+
+To overcome this limitation, computer architectures utilize floating-point representation rather than fixed-point constraints, building upon the principles of Scientific Notation. Instead of mapping leading or trailing zeros to physical registers, values are expressed via a normalized significand and an exponent:
 
 \\[ 2.99792458 \times 10^8 \\]
 \\[ 5.3 \times 10^{-11} \\]
 
-By letting the decimal point "float" left or right based on a multiplier (the power of 10), a tiny budget of digits can represent an incredibly vast range of values. Modern computing hardware builds on this exact principle using base-2 (binary) logic under the IEEE-754 standard.
+By allowing the radix point to "float" dynamically based on a multiplier (the power of 10), a constrained budget of digits can represent an incredibly vast dynamic range. Modern computing hardware implements this exact concept using base-2 (binary) logic, standardized universally under the IEEE-754 specification.
 
 ---
 
-## The "Sliding Window" Mental Model
+## The "Sliding Window"
 
-In a standard \\(\text{Float32}\\) variable, the computer allocates a budget of 32 bits divided into three distinct functional components: a **Sign bit**, an **Exponent** (the multiplier), and a **Mantissa** (the fractional precision budget). 
+## The Floating Dynamic Range
 
-Instead of treating the 32-bit register as a flat number line, it is much more effective to visualize it as a **sliding window hardware engine**:
-* The **Exponent** acts as a coarse control loop. It slides a physical window up and down across an astronomical scale of magnitude (from roughly \\(10^{-38}\\) to \\(10^{38}\\)) by shifting powers of 2.
-* The **Mantissa** acts as a fine control loop. Once the exponent anchors the window to a specific power-of-two bucket, the mantissa uses its fixed allocation of bits to carve up *only that specific window* into uniformly spaced, high-resolution steps.
+A standard \(\text{Float32}\) number is split into three parts: a **Sign bit** (+ or -), an **Exponent** (the multiplier), and a **Mantissa** (the precision budget). 
+
+Instead of treating this like a normal number line, it is easier to think of it as a **grid with a fixed number of lines** that can stretch or shrink.
+
+* **The Exponent** changes the total size of your grid (e.g., from microscopic to astronomical).
+* **The Mantissa** always has the exact same number of grid lines to split up whatever size the exponent chose.
 
 ### The Non-Uniform Number Line
 
-Consider how this looks on a real number line. The density of representable \\(\text{Float32}\\) numbers is fundamentally non-uniform:
+Because the number of grid lines is fixed but the size of the grid changes, numbers are not spaced out evenly.
+    Near Zero (High Density)                    Large Values (Low Density)
+|--|--|--|--|--|--|--|--|               |-------|-------|-------|-------|
+-10-9                     10-9          131,072.0                       131,072.01
+(Microscopic step size)                  (Coarse step size: ~0.0078)
 
-* **Scenario A (Near Zero):** When the exponent is small, the sliding window is focused tightly around zero. The mantissa splits this tiny window into billions of microscopic increments. The step size (the distance between one representable float and the absolute next) is ultra-dense, shrinking down to roughly \\(10^{-9}\\) or smaller.
-* **Scenario B (Deep Outliers):** When a model activation explodes out to a large value like \\(131,072.0\\), the exponent slides the window far up the number line. Because the window is now massive, the mantissa must stretch its fixed budget across a huge span. The step size between adjacent representable numbers balloons up to a coarse gap of \\(0.0078125\\).
+* **Near Zero (High Precision):** When dealing with tiny numbers, the grid shrinks down to fit a very small space. Because the grid lines are squeezed together, the gaps between numbers are incredibly microscopic (\(\sim10^{-9}\)). You have massive precision.
+* **Large Values (Low Precision):** When a number explodes to a massive value like \(131,072.0\), the grid stretches to fit that scale. Because the same number of grid lines are now stretched over a massive distance, the gaps between numbers balloon up to a much coarser step size (\(0.0078125\)).
 
-For training deep neural networks, this non-uniformity is an absolute superpower. During backpropagation, microscopic gradients near zero can be updated with pristine mathematical precision, while massive weight outliers can coexist in the same tensor without breaking the system register. 
+For deep neural networks, this uneven spacing is a massive advantage:
+1. **In backpropagation**, tiny gradients near zero get hyper-precise updates without getting rounded to zero.
+2. **For large weights or activations**, the system can handle massive values without hitting an overflow error, even if it sacrifices a little bit of precision to do so.
 
 *(For a granular, bit-level walkthrough of how a floating-point value is encoded into binary registers under the IEEE-754 specification, refer to **Appendix C: Floating-Point Bit Architecture**).*
 ---
