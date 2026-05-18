@@ -88,14 +88,14 @@ Therefore, in Float32, the stored 23-bit fraction behaves like 24 bits of precis
 
 The term $(-1)^S$ in this equation acts as a sign switch:
 
-1. If `S = 0`, then $(-1)^S = +1$.
-2. If `S = 1`, then $(-1)^S = -1$.
+1. If `S = 0`, then \\((-1)^S = +1\\).
+2. If `S = 1`, then \\((-1)^S = -1$\\).
 
 So this factor applies positive or negative sign to the final value.
 
-[
+\\[
 \text{Value} = (-1)^S \times \text{Significand} \times 2^{(E - 127)}
-]
+\\]
 
 Here, `Significand` means the precision value used after restoring the implicit leading `1`.
 
