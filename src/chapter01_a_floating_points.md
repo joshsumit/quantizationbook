@@ -93,9 +93,9 @@ The term $(-1)^S$ in this equation acts as a sign switch:
 
 So this factor applies positive or negative sign to the final value.
 
-\[
+[
 \text{Value} = (-1)^S \times \text{Significand} \times 2^{(E - 127)}
-\]
+]
 
 Here, `Significand` means the precision value used after restoring the implicit leading `1`.
 
