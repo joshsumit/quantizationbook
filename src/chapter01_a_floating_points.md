@@ -24,13 +24,11 @@ Floating-point (scientific-notation style binary encoding) addresses this limita
 1. Significant information (precision bits).
 2. A scale term (exponent).
 
-This is the same principle as scientific notation:
-
-\[
+\\[
 2.99792458 \times 10^8,
 \quad
 5.3 \times 10^{-11}
-\]
+\\]
 
 Digital hardware implements this in base-2 rather than base-10, but the structural idea remains the same: store a sign, store a scale factor, and store precision bits.
 
@@ -67,12 +65,8 @@ Meaning of each field:
 2. `Exponent (E)`: selects the power-of-two scale window (magnitude region currently being used).
 3. `Fraction`: stores local detail within the selected window.
 
-Before introducing formulas, two practical questions should be answered:
 
-1. What problem does normalization solve?
-2. Why not store the full binary value exactly as written?
-
-Normalization (forcing one canonical binary form) solves representational redundancy. Without normalization, the same value could be written in many equivalent forms, such as `1.01 x 2^3` and `0.101 x 2^4`. If multiple bit patterns can represent the same real number, precision is wasted and comparisons become less clean.
+**Normalization** (forcing one canonical binary form) solves representational redundancy. Without normalization, the same value could be written in many equivalent forms, such as `1.01 x 2^3` and `0.101 x 2^4`. If multiple bit patterns can represent the same real number, precision is wasted and comparisons become less clean.
 
 Float32 avoids this by enforcing normalized form.
 
