@@ -8,6 +8,23 @@ In a quantized graph, each operator has its own scale and zero-point. Those scal
 
 ---
 
+## Where Domains Come From in Compilation
+
+At training time, the model is usually expressed as a float graph: operators consume and produce float tensors, and the framework does not expose hardware-level accumulator and epilogue details. Quantized domains appear when this graph is lowered for a specific backend.
+
+During lowering, the compiler rewrites each eligible operator into a target kernel contract, typically:
+
+- int8 inputs under a declared input domain
+- int8 weights under a declared weight domain
+- int32 accumulation domain inside the kernel
+- an epilogue that applies scale conversion, rounding, clamp, and optional fused activation
+
+Each declared input or output domain becomes part of the compiled interface between operators. If two adjacent operators declare different interfaces, the compiler inserts a conversion node. That inserted conversion is the boundary we analyze in this chapter.
+
+So domains are not just analytical notation. They are compile-time contracts emitted by lowering, and boundaries are the concrete places where those contracts do not match.
+
+---
+
 ## Quantization Boundaries
 
 A *quantization boundary* is the point in the graph where the numeric domain changes — where the scale and zero-point of one operator's output differ from the scale and zero-point expected by the next operator's input.

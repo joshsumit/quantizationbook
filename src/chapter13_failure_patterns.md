@@ -172,16 +172,6 @@ The model appears quantized. The weights are int8. But the critical path runs th
 
 ---
 
-## Conceptual Consolidation
-
-Quantization failures have names. Outlier explosion, residual ghost, silent fallback, calibration drift, and scale mismatch are not exotic edge cases — they are the standard failure modes that account for the vast majority of quantization accuracy and performance regressions.
-
-When a quantized model misbehaves, the question is not "why did quantization fail?" It is: which specific pattern is this, and which invariant from the foundational chapters was violated? The answer determines the fix.
-
-**Pattern interactions.** These patterns are not independent. Fixing Outlier Explosion by widening the observer range can worsen Resolution Collapse in normal-range layers. Aligning scales at residual merges (fixing Residual Ghost) can widen the shared domain and introduce Budget Waste. Adding rescale ops to fix Scale Mismatch adds boundaries that create Fusion Loss. Effective quantization debugging means monitoring for secondary patterns introduced by each fix.
-
----
-
 ## Pattern 6: The Unquantizable Model
 
 *Canonical category: Resolution Collapse (dominant); may also involve Silent Fallback and capability envelope limits.*
@@ -229,6 +219,16 @@ Transformers rewrite the rules. Large language models and vision transformers pr
 The standard observer (Chapter 9) cannot fix this — no choice of percentile eliminates outliers that are structurally necessary. PTQ (Chapter 10) collapses entirely. QAT (Chapter 11) is theoretically possible but economically prohibitive for 70-billion-parameter models. The diagnostic patterns above still apply, but the dominant failure mode in transformers — outlier explosion at architectural scale — requires a different class of solutions entirely.
 
 The next four chapters explore this frontier: why transformers break (Chapter 14), how to redistribute outlier difficulty (Chapter 15), why quantizing only weights changes the game (Chapter 16), and how to choose weight values more intelligently than naive rounding (Chapter 17).
+
+---
+
+## Conceptual Consolidation
+
+Quantization failures have names. Outlier explosion, residual ghost, silent fallback, calibration drift, scale mismatch, and unquantizable-model behavior are not exotic edge cases — they are the standard failure modes that account for the vast majority of quantization accuracy and performance regressions.
+
+When a quantized model misbehaves, the question is not "why did quantization fail?" It is: which specific pattern is this, and which invariant from the foundational chapters was violated? The answer determines the fix.
+
+**Pattern interactions.** These patterns are not independent. Fixing Outlier Explosion by widening the observer range can worsen Resolution Collapse in normal-range layers. Aligning scales at residual merges (fixing Residual Ghost) can widen the shared domain and introduce Budget Waste. Adding rescale ops to fix Scale Mismatch adds boundaries that create Fusion Loss. Effective quantization debugging means monitoring for secondary patterns introduced by each fix.
 
 ---
 

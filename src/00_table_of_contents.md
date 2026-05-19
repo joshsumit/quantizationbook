@@ -45,8 +45,8 @@
 
 16. [Weight-Only and Group-Wise Quantization](chapter16_weight_only_and_groupwise_quantization.md)
 17. [GPTQ, AWQ, and Offline Calibration](chapter17_gptq_awq_and_offline_calibration.md)
-18. [The KV-Cache Bottleneck](chapter18_the_kv_cache_bottleneck.md)
-19. [The FP8 Revolution](chapter19_the_fp8_revolution.md)
+18. [The FP8 Revolution](chapter19_the_fp8_revolution.md)
+19. [The KV-Cache Bottleneck](chapter18_the_kv_cache_bottleneck.md)
 
 ## Part VI — Hardware Stacks
 

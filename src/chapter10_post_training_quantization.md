@@ -149,17 +149,9 @@ When these signals appear, the next step is not better calibration. It is a fund
 >              ├─ Few layers dominate? → Mixed Precision (Ch.12)
 >              │     Keep sensitive layers in FP16, quantize the rest.
 >              │
->              └─ Error spread across many layers?
->                   │
->                   ├─ Outlier channels visible? → SmoothQuant / Outlier control (Ch.15)
->                   │     Migrate activation range to weights.
->                   │
->                   ├─ Weight distributions hostile? → GPTQ / AWQ (Ch.17)
->                   │     Offline weight optimization without retraining.
->                   │
->                   └─ All else fails? → QAT (Ch.11)
->                        Retrain with fake quantization nodes.
->                        (Requires training infrastructure and data.)
+>              └─ Error spread across many layers? → QAT (Ch.11)
+>                   Retrain with fake quantization nodes.
+>                   (Requires training infrastructure and data.)
 > ```
 >
 > Include a side note: "This flowchart follows escalating cost — each step down requires more compute, more expertise, and more infrastructure."
