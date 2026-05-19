@@ -2,7 +2,7 @@
 
 ## Beyond Individual Values
 
-Chapters 2 through 5 treated quantization as an operation on individual values: a real number maps to a grid point, error is introduced, and the value continues. But a neural network is not a collection of independent values. It is a computation graph — a sequence of operators where the output of one becomes the input to the next.
+Previously, we looked at quantization as an operation on individual, isolated numbers: a real number is mapped to a grid point, a small amount of error is introduced, and that rounded value is passed on to the next step. But a neural network is not a collection of independent values. It is a computation graph — a sequence of operators where the output of one becomes the input to the next.
 
 In a quantized graph, each operator has its own scale and zero-point. Those scales define *domains* — a *domain* is simply the (scale, zero-point, precision) triple that governs how integers are interpreted as real values at a given point in the graph. Crossing domains requires an explicit conversion step. The output domain of one operator is not the input domain of the next. The scale that was appropriate for the first layer's activations has no reason to match what the second layer expects. Something must happen at every junction where one domain ends and another begins.
 
@@ -15,6 +15,7 @@ A *quantization boundary* is the point in the graph where the numeric domain cha
 Consider a simple two-layer network: Linear₁ followed by Linear₂. In float32, the output of Linear₁ flows directly into Linear₂ — there is no domain mismatch because float32 is a universal representation. In a quantized graph, this is no longer true.
 
 Linear₁ has its own output scale \\(S_1\\) and zero-point \\(Z_1\\), determined by its activation distribution. Linear₂ has its own input scale \\(S_2\\) and zero-point \\(Z_2\\), determined by what its weights were calibrated against. If \\(S_1 \neq S_2\\) or \\(Z_1 \neq Z_2\\), the output of Linear₁ cannot be consumed directly by Linear₂. The integers produced by one layer mean different real values under the mapping expected by the next.
+This mismatch point is a boundary. At every boundary, the values must be converted from one domain to another — rescaled, rounded, and clamped. The boundary exists, and it is not optional. Boundaries can only disappear when operators are *fused* — merged into a single combined operation so the conversion happens once at the chain’s output rather than at each intermediate step. (Fusion is covered in Chapter 8.) Boundaries can also disappear when multiple operators intentionally share a single domain.
 
 > **📊 INSERT DIAGRAM: Quantization Boundaries in a Two-Layer Network**
 >
@@ -48,7 +49,7 @@ Linear₁ has its own output scale \\(S_1\\) and zero-point \\(Z_1\\), determine
 > - Show that Domain₁ and Domain₂ have different scales (e.g., S₁=0.020, S₂=0.035)
 > - Note: "In float32, this boundary doesn't exist — values flow freely between layers"
 
-This mismatch point is a boundary. At every boundary, the values must be converted from one domain to another — rescaled, rounded, and clamped. The boundary exists, and it is not optional. Boundaries can only disappear when operators are *fused* — merged into a single combined operation so the conversion happens once at the chain’s output rather than at each intermediate step. (Fusion is covered in Chapter 8.) Boundaries can also disappear when multiple operators intentionally share a single domain.
+
 ### Worked Example: A Boundary in Numbers
 
 To see exactly what happens at a boundary, trace a single value through two layers with different scales.
