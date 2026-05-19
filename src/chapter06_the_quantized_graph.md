@@ -54,25 +54,31 @@ This mismatch point is a boundary. At every boundary, the values must be convert
 
 To see exactly what happens at a boundary, trace a single value through two layers with different scales.
 
-**Setup.** Layer 1 produces an activation value whose true float32 value is \\(r = 2.13\\). Layer 1's output domain is \\((S_1 = 0.020, Z_1 = 0)\\) (symmetric int8). Layer 2's input domain is \\((S_2 = 0.035, Z_2 = 0)\\).
+**Setup.** Layer 1 produces an activation value whose true float32 value is $r = 2.13$. Layer 1's output domain is $(S_1 = 0.020, Z_1 = 0)$ (symmetric int8). Layer 2's input domain is $(S_2 = 0.035, Z_2 = 0)$.
 
 **Step 1 — Layer 1 quantizes the output.**
 
 $$q_1 = \text{round}\!\left(\frac{2.13}{0.020}\right) = \text{round}(106.5) = 107 \qquad r_1' = 107 \times 0.020 = 2.140$$
 
-Rounding error: \\(|2.13 - 2.14| = 0.010\\).
+Rounding error: $|2.13 - 2.14| = 0.010$.
 
 **Step 2 — At the boundary, convert from Domain 1 to Domain 2.**
 
-The int8 code 107 in Domain 1 represents \\(r = 2.140\\). Domain 2 needs this value re-encoded with its own scale:
+Conceptually, the int8 code 107 in Domain 1 represents a real-world value of $r = 2.140$. To pass this to Layer 2, Domain 2 needs this value re-encoded with its own scale:
 
 $$q_2 = \text{round}\!\left(\frac{2.140}{0.035}\right) = \text{round}(61.14) = 61 \qquad r_2' = 61 \times 0.035 = 2.135$$
 
-Requantization error: \\(|2.140 - 2.135| = 0.005\\).
+Requantization error: $|2.140 - 2.135| = 0.005$.
 
-**Total error from float to Layer 2 input:** \\(|2.13 - 2.135| = 0.005\\). In this case the two rounding errors partially cancelled (by luck). In general they can add or partially cancel — the point is that each boundary *introduces* a rounding event, and across many boundaries the errors accumulate.
+*Under the Hood:* While we use the real float $2.140$ to understand the error mathematically, the hardware never actually converts the data back to a float at the boundary. Instead, the compiler pre-calculates a direct integer-to-integer shortcut factor by combining the two scales: 
 
-**What if the domains matched?** If \\(S_2 = S_1 = 0.020\\), then code 107 would be passed directly to Layer 2 with no conversion. Total error remains at 0.010 from Step 1 — no additional boundary error. This is why *scale alignment* (enforcing matching scales) and *fusion* (eliminating boundaries entirely) are the primary tools for reducing graph-level error.
+$$\text{Rescale Factor} = \frac{S_1}{S_2} = \frac{0.020}{0.035} \approx 0.5714$$
+
+The hardware takes the integer code $107$, multiplies it directly by $0.5714$ using fixed-point math, and arrives straight at the integer code $61$, introducing the exact same rounding error without ever leaving the integer domain.
+
+**Total error from float to Layer 2 input:** $|2.13 - 2.135| = 0.005$. In this case the two rounding errors partially cancelled (by luck). In general they can add or partially cancel — the point is that each boundary *introduces* a rounding event, and across many boundaries the errors accumulate.
+
+**What if the domains matched?** If $S_2 = S_1 = 0.020$, then code 107 would be passed directly to Layer 2 with no conversion. Total error remains at 0.010 from Step 1 — no additional boundary error. This is why *scale alignment* (enforcing matching scales) and *fusion* (eliminating boundaries entirely) are the primary tools for reducing graph-level error.
 
 ---
 
@@ -80,23 +86,23 @@ Requantization error: \\(|2.140 - 2.135| = 0.005\\).
 
 Within a single operator, quantization creates a second kind of domain transition — one that is less obvious but equally important.
 
-When two int8 values are multiplied, the result requires more than 8 bits. The product of two 8-bit integers can be as large as \\(127 \times 127 = 16{,}129\\), which does not fit in an 8-bit integer (maximum value 127 for signed, 255 for unsigned). When these products are summed across a dot product — say, 512 multiplications accumulated into a single result — the accumulated value can reach:
+When two int8 values are multiplied, the result requires more than 8 bits. The product of two 8-bit integers can be as large as $127 \times 127 = 16{,}129$, which does not fit in an 8-bit integer (maximum value 127 for signed, 255 for unsigned). When these products are summed across a dot product — say, 512 multiplications accumulated into a single result — the accumulated value can reach:
 
 $$512 \times 127 \times 127 = 8{,}258{,}048$$
 
 This number requires 24 bits to represent.
 
-The exact bit requirement follows a formula. For a dot product of \\(N\\) pairs of \\(b\\)-bit integers, each in the range \\([0, 2^b - 1]\\), the maximum possible accumulator value is \\(N \times (2^b - 1)^2\\). The bits needed to represent this value are:
+The exact bit requirement follows a formula. For a dot product of $N$ pairs of $b$-bit integers, each in the range $[0, 2^b - 1]$, the maximum possible accumulator value is $N \times (2^b - 1)^2$. The bits needed to represent this value are:
 
 $$\text{bits}_{\text{acc}} = \lceil \log_2(N \times (2^b - 1)^2) \rceil = 2b + \lceil \log_2(N) \rceil$$
 
-For int8 (\\(b = 8\\)) with a dot product width of \\(N = 1024\\) (a common hidden dimension):
+For int8 ($b = 8$) with a dot product width of $N = 1024$ (a common hidden dimension):
 
 $$\text{bits}_{\text{acc}} = 2 \times 8 + \lceil \log_2(1024) \rceil = 16 + 10 = 26 \text{ bits}$$
 
-An int16 accumulator (16 bits, max value 65,535) overflows at \\(N = 4\\) — after just four multiply-accumulates. An int32 accumulator (32 bits, max value ~2.1 billion) handles dot products up to \\(N = 65{,}536\\) before overflowing — safely above any realistic layer width.
+An int16 accumulator (16 bits, max value 65,535) overflows at $N = 4$ — after just four multiply-accumulates. An int32 accumulator (32 bits, max value ~2.1 billion) handles dot products up to $N = 65{,}536$ before overflowing — safely above any realistic layer width.
 
-This is not an implementation detail. It is a correctness guarantee. In mainstream int8 kernels on CPUs, GPUs, and NPUs, the int8 × int8 multiply-accumulate produces int32 results. Some edge-device DSPs use int16 accumulators for power savings — these devices can overflow on narrow dot products (even a handful of worst-case signed MACs can exceed int16 range), producing incorrect outputs. *When an accumulator overflows*, the result wraps around: a sum that should be 40,000 becomes \\(40{,}000 - 65{,}536 = -25{,}536\\) in a signed int16 accumulator. The model silently produces garbage. This is the "Numerical Explosion" failure that the bit-growth formula predicts and that Chapter 4's hardware table warns about.
+This is not an implementation detail. It is a correctness guarantee. In mainstream int8 kernels on CPUs, GPUs, and NPUs, the int8 × int8 multiply-accumulate produces int32 results. Some edge-device DSPs use int16 accumulators for power savings — these devices can overflow on narrow dot products (even a handful of worst-case signed MACs can exceed int16 range), producing incorrect outputs. *When an accumulator overflows*, the result wraps around: a sum that should be 40,000 becomes $40{,}000 - 65{,}536 = -25{,}536$ in a signed int16 accumulator. The model silently produces garbage. This is the "Numerical Explosion" failure that the bit-growth formula predicts and that Chapter 4's hardware table warns about.
 
 The consequence is that every linear layer and convolution in a quantized model operates in two domains: the inputs arrive as int8, and the accumulation produces int32. The output of the operator — before any conversion — is int32, not int8.
 
