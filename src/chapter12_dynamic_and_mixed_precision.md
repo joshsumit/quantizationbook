@@ -1,8 +1,10 @@
-# Chapter 12: Dynamic Quantization and Mixed Precision
+﻿# Chapter 12: Dynamic Quantization and Mixed Precision
+
+In this chapter, we quantize activations dynamically and assign mixed precision across layers.
 
 ## Beyond Static Scales
 
-Static quantization fixes scales before inference — either from calibration (PTQ) or from training (QAT) — and every input is quantized using the same parameters. This works when activation distributions are stable across inputs.
+Static quantization fixes scales before inference â€” either from calibration (PTQ) or from training (QAT) â€” and every input is quantized using the same parameters. This works when activation distributions are stable across inputs.
 
 But what if they are not? What if the range of activations varies significantly from one input to the next? A static scale may be too narrow for some inputs (causing clipping) and too wide for others (wasting resolution). Two strategies address this: dynamic quantization, which computes scales at runtime, and mixed precision, which selectively keeps sensitive layers in higher precision.
 
@@ -10,11 +12,11 @@ But what if they are not? What if the range of activations varies significantly 
 
 ## Dynamic Quantization
 
-Dynamic quantization quantizes weights statically (they do not change between inputs) but determines activation scales at inference time — per-batch or per-token.
+Dynamic quantization quantizes weights statically (they do not change between inputs) but determines activation scales at inference time â€” per-batch or per-token.
 
-Recall from Chapter 9 that in static quantization, observers are *temporary*: they collect activation statistics during a calibration phase, produce fixed scales and zero-points, and are then removed from the model. The deployed model contains only the constants they computed — no observer logic runs at inference time.
+Recall from Chapter 9 that in static quantization, observers are *temporary*: they collect activation statistics during a calibration phase, produce fixed scales and zero-points, and are then removed from the model. The deployed model contains only the constants they computed â€” no observer logic runs at inference time.
 
-Dynamic quantization flips this. The observer's job — scanning a tensor to find its range — becomes a *permanent runtime operation*. For each input, before the quantized computation runs, a lightweight runtime statistic (often absmax or min/max, sometimes per-row or per-token) is computed to derive the activation scale and zero-point. Implementations may use approximations to avoid a full-tensor reduction. The quantized computation then proceeds as usual.
+Dynamic quantization flips this. The observer's job â€” scanning a tensor to find its range â€” becomes a *permanent runtime operation*. For each input, before the quantized computation runs, a lightweight runtime statistic (often absmax or min/max, sometimes per-row or per-token) is computed to derive the activation scale and zero-point. Implementations may use approximations to avoid a full-tensor reduction. The quantized computation then proceeds as usual.
 
 The contrast is sharp:
 
@@ -22,18 +24,18 @@ The contrast is sharp:
 |---|---|---|
 | **Weight parameters** | Fixed before deployment | Fixed before deployment |
 | **Activation parameters** | Fixed during calibration, stored as constants | Computed at runtime for each input |
-| **Observer logic at inference** | Absent — removed after calibration | Present — runs every layer, every input |
+| **Observer logic at inference** | Absent â€” removed after calibration | Present â€” runs every layer, every input |
 | **Calibration dataset required?** | Yes | No |
 
 The benefit is clear: the scale adapts to each input's actual activation range. An input with activations peaking at 3.0 gets a scale optimized for [-3.0, 3.0]. A different input with activations peaking at 8.0 gets a wider scale. Neither clips. Neither wastes resolution on a range set by a different input's statistics.
 
-The cost is equally clear. Computing the activation scale requires an extra reduction pass over the activation tensor — often implemented as a separate kernel — which must complete before the matmul can run. For each layer in the model, the sequence is:
+The cost is equally clear. Computing the activation scale requires an extra reduction pass over the activation tensor â€” often implemented as a separate kernel â€” which must complete before the matmul can run. For each layer in the model, the sequence is:
 
 1. Compute activation range (extra reduction pass)
 2. Derive scale and zero-point
 3. Quantize activations to int8
 4. Execute the int8 matmul
-5. Convert output — depending on the regime, results may remain in int8 for subsequent integer ops or be dequantized back to floating-point at the next graph boundary
+5. Convert output â€” depending on the regime, results may remain in int8 for subsequent integer ops or be dequantized back to floating-point at the next graph boundary
 
 Steps 1-3 add latency that does not exist in static quantization. For models with many layers, this overhead accumulates. Whether the improved range accuracy outweighs the overhead depends on the model and the hardware.
 
@@ -45,28 +47,28 @@ Dynamic quantization is most useful when:
 - **Input distributions vary widely.** NLP models processing text of varying lengths, streaming models processing shifting data distributions, or any workload where the activation range is not stable across inputs.
 - **Weight quantization is the primary goal.** In many LLM serving scenarios, the dominant cost is loading weights from memory (Chapter 1). Weights are quantized statically. Activations may remain in float16 entirely, or be dynamically quantized per-token. In autoregressive decoding, per-token or per-row activation scaling is often the practical dynamic granularity.
 
-**Concrete example — memory-bound vs. compute-bound.** A 70B model with int8 weights (35 GB). At 900 GB/s bandwidth:
+**Concrete example â€” memory-bound vs. compute-bound.** A 70B model with int8 weights (35 GB). At 900 GB/s bandwidth:
 
-- *Batch 1 decode (memory-bound):* weight load = \\(35 / 900 = 38.9\\) ms. Compute for 1 token: ~70 billion MACs at ~500 TOPS = 0.14 ms. The GPU is idle 99.6% of the time — pure bandwidth-bound. Weight-only quantization directly improves tokens/second.
+- *Batch 1 decode (memory-bound):* weight load = \\(35 / 900 = 38.9\\) ms. Compute for 1 token: ~70 billion MACs at ~500 TOPS = 0.14 ms. The GPU is idle 99.6% of the time â€” pure bandwidth-bound. Weight-only quantization directly improves tokens/second.
 - *Batch 32 prefill:* weight load still 38.9 ms (loaded once, shared). Compute: \\(32 \times 0.14 = 4.5\\) ms. Still bandwidth-bound, but compute is catching up.
-- *Batch 256 prefill:* compute = \\(256 \times 0.14 = 35.8\\) ms — roughly equal to memory load. Beyond this batch size, compute dominates, and weight-only quantization no longer improves throughput. Full int8 quantization (weights *and* activations) cuts compute by ~2× via native int8 matmul.
+- *Batch 256 prefill:* compute = \\(256 \times 0.14 = 35.8\\) ms â€” roughly equal to memory load. Beyond this batch size, compute dominates, and weight-only quantization no longer improves throughput. Full int8 quantization (weights *and* activations) cuts compute by ~2Ã— via native int8 matmul.
 
 Dynamic quantization changes quantization *parameters* per input; it does not necessarily change the graph's operator set or precision assignments at runtime. This distinguishes it from dynamic *precision selection*, which would switch between int8 and fp16 paths based on runtime conditions.
 
-**Why weight quantization is the primary goal in LLMs.** During autoregressive LLM generation (producing one token at a time), the activation tensor at each layer is shaped [1, hidden_dim] — one row per layer, a few kilobytes. Even in float16, the cost to load activations per inference is tiny. The weights, however, are the same 35–40 GB every token. Reducing weight size directly reduces the memory bandwidth cost per token.
+**Why weight quantization is the primary goal in LLMs.** During autoregressive LLM generation (producing one token at a time), the activation tensor at each layer is shaped [1, hidden_dim] â€” one row per layer, a few kilobytes. Even in float16, the cost to load activations per inference is tiny. The weights, however, are the same 35â€“40 GB every token. Reducing weight size directly reduces the memory bandwidth cost per token.
 
 **Dynamic quantization vs failure patterns:**
 
 - *Calibration Mismatch / Calibration Drift*: dynamic scales avoid baking in fixed activation ranges from unrepresentative or shifting calibration data.
 - *Tail Clipping*: per-input scale reduces saturation on inputs with larger-than-calibrated ranges.
 - *Budget Waste / Distribution Mismatch*: per-input scale avoids over-wide ranges caused by other inputs' statistics.
-- *Fusion Loss* (runtime): the extra reduction and conversion kernels can prevent operator fusion — a cost that must be weighed against the accuracy benefit.
+- *Fusion Loss* (runtime): the extra reduction and conversion kernels can prevent operator fusion â€” a cost that must be weighed against the accuracy benefit.
 
 ---
 
 ## Mixed Precision
 
-Not all layers tolerate quantization equally. In a typical model, some layers are robust — quantizing them to int8 costs negligible accuracy — while others are sensitive — quantizing them causes disproportionate accuracy loss.
+Not all layers tolerate quantization equally. In a typical model, some layers are robust â€” quantizing them to int8 costs negligible accuracy â€” while others are sensitive â€” quantizing them causes disproportionate accuracy loss.
 
 Mixed precision exploits this variation by assigning different precisions to different layers. Sensitive layers stay in float16 (or float32). Robust layers run in int8. The model becomes a mix of precisions, with each layer operating at the precision its sensitivity demands.
 
@@ -94,9 +96,9 @@ Consider a 12-layer model. Quantizing each layer individually and measuring accu
 Layers 1, 6, and 12 are clearly sensitive. The rest are robust. A mixed-precision policy might keep layers 1, 6, and 12 in float16 and quantize the remaining 9 layers to int8.
 
 The result (illustrative numbers):
-- **Uniform int8:** all 12 layers quantized → 4.5% total accuracy drop
-- **Mixed precision:** 3 layers float16, 9 layers int8 → 0.3% total accuracy drop
-- **Model size:** ~1.3× the fully-quantized version, ~3× smaller than the floating-point baseline
+- **Uniform int8:** all 12 layers quantized â†’ 4.5% total accuracy drop
+- **Mixed precision:** 3 layers float16, 9 layers int8 â†’ 0.3% total accuracy drop
+- **Model size:** ~1.3Ã— the fully-quantized version, ~3Ã— smaller than the floating-point baseline
 
 Actual accuracy gains and size ratios depend on which tensors remain floating-point, whether weights dominate the model footprint, and the specific task. The pattern is typical: a small number of sensitive layers accounts for most of the quantization error.
 
@@ -104,21 +106,21 @@ Actual accuracy gains and size ratios depend on which tensors remain floating-po
 
 The procedure is mechanical:
 
-1. **Establish a baseline.** Run the full floating-point model on a validation set and record the accuracy metric (top-1 accuracy, perplexity, F1 — whatever the task requires).
+1. **Establish a baseline.** Run the full floating-point model on a validation set and record the accuracy metric (top-1 accuracy, perplexity, F1 â€” whatever the task requires).
 
 2. **Quantize one layer at a time.** For each layer \\(i\\) in the model, quantize only layer \\(i\\) to int8 while keeping all other layers in floating-point. Run the validation set. Record the accuracy drop \\(\Delta_i\\).
 
-3. **Rank by sensitivity.** Sort layers by \\(\Delta_i\\) descending. Layers with the highest \\(\Delta_i\\) are the most sensitive — they contribute the most error when quantized.
+3. **Rank by sensitivity.** Sort layers by \\(\Delta_i\\) descending. Layers with the highest \\(\Delta_i\\) are the most sensitive â€” they contribute the most error when quantized.
 
-4. **Set a threshold.** Choose an acceptable per-layer accuracy drop — typically 0.1% for classification tasks, 0.5 perplexity points for language models. Layers above this threshold stay in float16. Layers below are quantized to int8.
+4. **Set a threshold.** Choose an acceptable per-layer accuracy drop â€” typically 0.1% for classification tasks, 0.5 perplexity points for language models. Layers above this threshold stay in float16. Layers below are quantized to int8.
 
-5. **Validate the combination.** Quantize all robust layers simultaneously and measure the total accuracy drop. The sum of individual drops is an upper bound — the actual combined drop may be lower (errors can partially cancel) or slightly higher (errors can interact across layers).
+5. **Validate the combination.** Quantize all robust layers simultaneously and measure the total accuracy drop. The sum of individual drops is an upper bound â€” the actual combined drop may be lower (errors can partially cancel) or slightly higher (errors can interact across layers).
 
-For the 12-layer example above, steps 2–3 take 12 forward passes over the validation set — roughly 12× the cost of a single evaluation. For a 100-layer model, it takes 100×. This is expensive but mechanical, and it runs only once per model-hardware combination.
+For the 12-layer example above, steps 2â€“3 take 12 forward passes over the validation set â€” roughly 12Ã— the cost of a single evaluation. For a 100-layer model, it takes 100Ã—. This is expensive but mechanical, and it runs only once per model-hardware combination.
 
 ### Mixed Precision Is Not a Fallback
 
-Keeping sensitive layers in float introduces precision boundaries in the graph. At every transition between an int8 layer and a float16 layer, values must be converted between formats — an operation that costs bandwidth, adds format-conversion work, and reduces fusion opportunities (Chapter 4). Each such transition is a boundary with its own cost.
+Keeping sensitive layers in float introduces precision boundaries in the graph. At every transition between an int8 layer and a float16 layer, values must be converted between formats â€” an operation that costs bandwidth, adds format-conversion work, and reduces fusion opportunities (Chapter 4). Each such transition is a boundary with its own cost.
 
 Mixed precision is an architectural decision: allocate the precision budget where sensitivity demands it, accept the boundary costs at transitions, and quantize everything else aggressively. It is not a fallback for "quantization didn't work." It is a deliberate design that balances accuracy, size, and throughput.
 
@@ -128,16 +130,16 @@ Mixed precision is the standard remedy for Resolution Collapse concentrated in a
 
 ## Conceptual Consolidation
 
-Static quantization fixes scales before inference — simple but rigid. Dynamic quantization adapts scales per-input — flexible but adds per-inference overhead. Mixed precision assigns different precisions to different layers — precise but introduces inter-precision boundaries.
+Static quantization fixes scales before inference â€” simple but rigid. Dynamic quantization adapts scales per-input â€” flexible but adds per-inference overhead. Mixed precision assigns different precisions to different layers â€” precise but introduces inter-precision boundaries.
 
 None of these is universally best. The choice depends on the deployment constraints:
 
 **Decision checklist:**
 
-- If the issue is **calibration representativeness** (Calibration Mismatch / Drift) → dynamic quantization.
-- If the issue is **a few sensitive layers** (Resolution Collapse in a subset) → mixed precision.
-- If the issue is **widespread distribution hostility** (Tail Clipping / Distribution Mismatch across many layers) → QAT.
-- If latency overhead from dynamic scale computation is unacceptable → static quantization with better calibration.
+- If the issue is **calibration representativeness** (Calibration Mismatch / Drift) â†’ dynamic quantization.
+- If the issue is **a few sensitive layers** (Resolution Collapse in a subset) â†’ mixed precision.
+- If the issue is **widespread distribution hostility** (Tail Clipping / Distribution Mismatch across many layers) â†’ QAT.
+- If latency overhead from dynamic scale computation is unacceptable â†’ static quantization with better calibration.
 
 Each strategy is a trade-off with quantifiable costs, not a solution to be applied by default.
 
@@ -153,3 +155,4 @@ Each strategy is a trade-off with quantifiable costs, not a solution to be appli
 | **GPTQ / AWQ** (Ch.17) | Suboptimal weight rounding (redistributes error intelligently) | Activation quantization; runtime overhead | Hours of offline optimization; no retraining |
 | **Weight-Only** (Ch.16) | Memory-bandwidth bottleneck for large models at low batch sizes | Compute-bound workloads; activation errors | Dequantization overhead at runtime |
 | **FP8** (Ch.19) | Outlier distributions that break int8 grids; training + inference | Legacy hardware; not available on pre-H100 GPUs | Requires H100/B200 or equivalent hardware |
+

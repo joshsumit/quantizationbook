@@ -1,4 +1,6 @@
-# Chapter 01A: Floating-Point Fundamentals for Quantization
+﻿# Chapter 01A: Floating-Point Fundamentals for Quantization
+
+In this chapter, we quantize nothing yet and establish floating-point behavior that quantization will later constrain.
 
 ## Context for Quantization
 
@@ -305,5 +307,7 @@ Float32 derives its practical strength from balancing dynamic range and precisio
 Quantization (for example, INT8) replaces that adaptive floating grid with a much smaller uniform grid. This improves memory efficiency and execution speed but introduces irreversible approximation.
 
 Subsequent chapters formalize this mapping through scale and zero-point and then track how the resulting error propagates through real model pipelines.
+
+
 
 

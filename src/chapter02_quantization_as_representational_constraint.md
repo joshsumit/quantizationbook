@@ -1,4 +1,4 @@
-# Chapter 2: Quantization as a Representational Constraint
+﻿# Chapter 2: Quantization as a Representational Constraint
 
 In this chapter, we quantize activations onto a fixed integer grid.
 
@@ -93,7 +93,7 @@ The core lesson of this system breakdown is that the grid possesses no native aw
 
 ---
 
-## The Range–Precision Trade-Off
+## The Rangeâ€“Precision Trade-Off
 
 The step size of a quantized layer is dictated by a hard architectural compromise between two competing parameters: the width of the real-world range requiring coverage, and the finite bit budget of the processor registers. Because the number of grid points is locked at 256 for \\(\text{INT8}\\) execution, expanding the boundary limits to catch extreme outliers automatically forces the step size to grow wider.
 
@@ -101,7 +101,7 @@ If the baseline range of \\([-1.0, 1.0]\\) is stretched to an expanded tracking 
 
 \\[\Delta = \frac{10.0 - (-10.0)}{255} = \frac{20.0}{255} \approx 0.078431\\]
 
-Widening the boundary ten-fold has forced the step size to scale up by an identical factor of ten. Real values like `0.3021` and `0.3500`—which mapped to completely independent positions on the tight grid—now collapse into the identical integer position on the wide grid. This defines the fundamental range-precision trade-off: *maximizing range coverage uniformly minimizes local signal resolution*.
+Widening the boundary ten-fold has forced the step size to scale up by an identical factor of ten. Real values like `0.3021` and `0.3500`â€”which mapped to completely independent positions on the tight gridâ€”now collapse into the identical integer position on the wide grid. This defines the fundamental range-precision trade-off: *maximizing range coverage uniformly minimizes local signal resolution*.
 
 This representational crisis intensifies when dropping down to 4-bit integer processing (\\(\text{INT4}\\)), where the total discrete budget collapses from 256 levels down to a mere \\(2^4 = 16\\) unique points. Attempting to map the baseline \\([-1.0, 1.0]\\) range across 16 uniform levels forces the step size to open drastically:
 
@@ -111,7 +111,7 @@ Mapping the complete sequence of all 16 representable points on this digital rul
 
 `-1.0`, `-0.8667`, `-0.7333`, `-0.6000`, `-0.4667`, `-0.3333`, `-0.2000`, `-0.0667`, `0.0667`, `0.2000`, `0.3333`, `0.4667`, `0.6000`, `0.7333`, `0.8667`, `1.0`.
 
-The structural gap between `0.0667` and `0.2000` spans a massive `0.1333` units. Any floating-point activation drifting inside this gap loses its mathematical identity entirely. Values such as `0.08`, `0.12`, and `0.15`—which easily maintained separation under \\(\text{Float32}\\) and \\(\text{INT8}\\) configurations—are crushed into the exact same point. Moving an execution pipeline down to 4 bits represents a profound architectural shift that fundamentally degrades the expressive capacity of the network layers.
+The structural gap between `0.0667` and `0.2000` spans a massive `0.1333` units. Any floating-point activation drifting inside this gap loses its mathematical identity entirely. Values such as `0.08`, `0.12`, and `0.15`â€”which easily maintained separation under \\(\text{Float32}\\) and \\(\text{INT8}\\) configurationsâ€”are crushed into the exact same point. Moving an execution pipeline down to 4 bits represents a profound architectural shift that fundamentally degrades the expressive capacity of the network layers.
 
 ---
 
@@ -123,28 +123,28 @@ When distinct floating-point values collapse onto an identical uniform grid coor
 
 This degradation is an unyielding physical constraint of low-precision compute architectures. The neural network must execute its entire analytical workload using exclusively the numbers that survive the grid mapping. If the pre-trained weights require finer structural alignment than the computed step size permits, model accuracy drops precipitously. If the underlying mathematical paths are resilient to uniform grouping, the system unlocks massive hardware execution throughput for zero functional cost. 
 
-> **📊 INSERT DIAGRAM: The Range–Precision Trade-Off**
+> **ðŸ“Š INSERT DIAGRAM: The Rangeâ€“Precision Trade-Off**
 >
 > Three side-by-side number-line diagrams, all using int8 (256 levels), showing the same distribution of activation values (a bell curve centered near 0) under three different range choices:
 >
 > ```
-> Panel A: Range [-1, 1] — "Tight range"
+> Panel A: Range [-1, 1] â€” "Tight range"
 >   - Grid points densely packed (step = 0.0078)
 >   - Bell curve fits perfectly inside the range
 >   - No clipping, high precision
->   - Label: "✓ Best case: range matches distribution"
+>   - Label: "âœ“ Best case: range matches distribution"
 >
-> Panel B: Range [-10, 10] — "Too wide"
+> Panel B: Range [-10, 10] â€” "Too wide"
 >   - Grid points spread apart (step = 0.078)
 >   - Bell curve occupies only ~10% of the grid
 >   - No clipping, but ~230 of 256 codes are wasted in empty tails
->   - Label: "✗ Wasted resolution: most codes represent values that never appear"
+>   - Label: "âœ— Wasted resolution: most codes represent values that never appear"
 >
-> Panel C: Range [-0.5, 0.5] — "Too narrow"
+> Panel C: Range [-0.5, 0.5] â€” "Too narrow"
 >   - Grid points very dense inside range (step = 0.0039)
->   - Tails of the bell curve extend past ±0.5 and are clipped
+>   - Tails of the bell curve extend past Â±0.5 and are clipped
 >   - High precision inside, but values outside are crushed to boundary
->   - Label: "✗ Clipping: tail values destroyed"
+>   - Label: "âœ— Clipping: tail values destroyed"
 > ```
 >
 > Annotate: "This is the fundamental trade-off (Ch.5, Ch.9): widen the range and lose precision, or narrow it and clip outliers."
@@ -159,7 +159,7 @@ When evaluating a model for hardware deployment, the primary objective is to res
 
 ---
 
-## Key Terms — Quick Reference
+## Key Terms â€” Quick Reference
 
 The following architectural definitions form the core technical vocabulary used throughout this book. While subsequent chapters provide dedicated systems analyses of each mechanism, this reference map illustrates how the components interface within an execution pipeline.
 

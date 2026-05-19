@@ -1,4 +1,6 @@
-# Chapter 1: Why Quantization Exists
+﻿# Chapter 1: Why Quantization Exists
+
+In this chapter, we quantize model parameters for deployment economics.
 
 Models are often too large to fit in available GPU memory.
 Latency is dominated by moving weights from memory, not by math.
@@ -19,7 +21,7 @@ During standard model training and development, networks operate in the high-pre
 
 Quantization strips away this excessive resolution by replacing dense 32-bit values with coarser 8-bit (\\(\text{INT8}\\)) or 4-bit (\\(\text{INT4}\\)) representations. This transition collapses the available representational levels from billions down to just 256 or 16 points. Compressing the numerical space dramatically shrinks the model's physical memory footprint and accelerates arithmetic execution by routing operations through specialized low-precision datapaths on the chip. 
 
-However, this compression permanently discards information, introducing a measurable loss in structural fidelity. The ultimate objective of this book is to analyze that loss at a systems level—identifying exactly where precision degrades, tracking how error propagates through silicon layers, and establishing engineering frameworks to preserve a model's functional intelligence under these tight hardware constraints.
+However, this compression permanently discards information, introducing a measurable loss in structural fidelity. The ultimate objective of this book is to analyze that loss at a systems levelâ€”identifying exactly where precision degrades, tracking how error propagates through silicon layers, and establishing engineering frameworks to preserve a model's functional intelligence under these tight hardware constraints.
 
 ---
 
@@ -27,7 +29,7 @@ However, this compression permanently discards information, introducing a measur
 
 A modern hardware accelerator or graphics processor can execute trillions of arithmetic operations per second. This capacity is tracked as peak compute throughput and measured in \\(\text{TFLOP/s}\\) (tera-floating-point operations per second, representing \\(10^{12}\\) operations per second). Because the raw multiplication throughput of modern silicon architecture is extraordinarily high, multiplication capacity is rarely the limiting factor during deep learning inference. 
 
-The primary operational bottleneck stems from the physical challenge of moving data from off-chip memory to the compute units fast enough to keep the execution pipelines fully saturated. When an execution unit spends the majority of its clock cycles idling while waiting for parameter data to arrive across a bus, the workload is classified as *memory-bandwidth-bound*. Conversely, when data arrives quickly enough to keep the arithmetic units operating at peak capacity without interruption, the workload becomes *compute-bound*. For production language models—especially during real-time generation at low batch sizes—inference execution is heavily dominated by memory traffic rather than raw mathematical computation.
+The primary operational bottleneck stems from the physical challenge of moving data from off-chip memory to the compute units fast enough to keep the execution pipelines fully saturated. When an execution unit spends the majority of its clock cycles idling while waiting for parameter data to arrive across a bus, the workload is classified as *memory-bandwidth-bound*. Conversely, when data arrives quickly enough to keep the arithmetic units operating at peak capacity without interruption, the workload becomes *compute-bound*. For production language modelsâ€”especially during real-time generation at low batch sizesâ€”inference execution is heavily dominated by memory traffic rather than raw mathematical computation.
 
 The math behind a 7-billion-parameter model stored in unquantized \\(\text{Float32}\\) precision highlights this constraint. This single model requires 28 gigabytes (GB) of physical memory storage. During deployment, the network operates in a weight-streaming regime, meaning every single one of those 7 billion parameters must be fetched from off-chip memory chips and loaded into the processor core during every single forward generation token step. 
 
@@ -53,7 +55,7 @@ Arithmetic operations themselves are remarkably inexpensive in terms of energy c
 
 Moving a single 32-bit value from off-chip Dynamic Random-Access Memory (\\(\text{DRAM}\\)) across the motherboard traces to the compute core costs roughly 640 pJ. This data movement costs over 170 times the energy of the \\(\text{Float32}\\) multiplication itself, and over 3,200 times the energy of an \\(\text{INT8}\\) computation.
 
-This stark structural imbalance—where the energy cost of moving data across physical distances is orders of magnitude higher than processing that data—is an inescapable characteristic of modern silicon architectures. The law of line capacitance ensures that driving signals across physical wires separating memory pools from logic gates dictates the thermal and electrical toll of a chip. When scaled to an enterprise datacenter serving billions of token requests daily, the electricity budget is paid primarily to shuttle parameters across physical buses. By compressing representations from 32 bits down to 8 or 4 bits, quantization curtails total memory traffic, making it fundamentally an energy-reduction strategy where arithmetic clock cycle savings are a welcome secondary benefit.
+This stark structural imbalanceâ€”where the energy cost of moving data across physical distances is orders of magnitude higher than processing that dataâ€”is an inescapable characteristic of modern silicon architectures. The law of line capacitance ensures that driving signals across physical wires separating memory pools from logic gates dictates the thermal and electrical toll of a chip. When scaled to an enterprise datacenter serving billions of token requests daily, the electricity budget is paid primarily to shuttle parameters across physical buses. By compressing representations from 32 bits down to 8 or 4 bits, quantization curtails total memory traffic, making it fundamentally an energy-reduction strategy where arithmetic clock cycle savings are a welcome secondary benefit.
 
 ---
 
@@ -74,7 +76,7 @@ Despite the immense performance and economic benefits of low-precision execution
 
 Whether this degradation disrupts a model's capabilities depends heavily on the underlying layer architecture, the specific task domain, and the geometric distribution of the values being clamped. While certain neural networks tolerate aggressive quantization with negligible deviations in accuracy, others experience catastrophic behavioral degradation under identical constraints. 
 
-Demystifying this variance—and predicting how specific network architectures behave under quantization—forms the core technical narrative of the chapters ahead. Furthermore, because weights represent only part of the inference data footprint, subsequent sections will explore how activations and the autoregressive Key-Value (\\(\text{KV}\\)) cache interact with memory subsystems during runtime execution.
+Demystifying this varianceâ€”and predicting how specific network architectures behave under quantizationâ€”forms the core technical narrative of the chapters ahead. Furthermore, because weights represent only part of the inference data footprint, subsequent sections will explore how activations and the autoregressive Key-Value (\\(\text{KV}\\)) cache interact with memory subsystems during runtime execution.
 
 ---
 
@@ -84,10 +86,10 @@ Before diving into the low-level mechanics of discrete mappings, establishing an
 
 ---
 
->## Quantization  — End-to-End Pipeline
+>## Quantization  â€” End-to-End Pipeline
 
 <div style="background:#121214; padding:14px; border-radius:10px;">
-	<img src="diagrams/pipline.svg" alt="Quantization — End-to-End Pipeline" style="width:100%; height:auto; display:block;" />
+	<img src="diagrams/pipline.svg" alt="Quantization â€” End-to-End Pipeline" style="width:100%; height:auto; display:block;" />
 </div>
 
 

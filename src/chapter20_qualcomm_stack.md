@@ -1,10 +1,12 @@
-# Chapter 20: The Qualcomm Stack — From Training to On-Device Inference
+﻿# Chapter 20: The Qualcomm Stack â€” From Training to On-Device Inference
+
+In this chapter, we quantize weights and activations for Qualcomm deployment toolchains and hardware.
 
 ## Why a Dedicated Chapter on Qualcomm?
 
-Qualcomm ships more AI-capable silicon than any other company on the planet. Every Snapdragon SoC in every Android flagship, every Windows-on-Arm laptop, every automotive ADAS module, every XR headset — all of them contain Qualcomm's Hexagon NPU. If you quantize a model and deploy it to an edge device, there is a strong probability that the target hardware is Qualcomm.
+Qualcomm ships more AI-capable silicon than any other company on the planet. Every Snapdragon SoC in every Android flagship, every Windows-on-Arm laptop, every automotive ADAS module, every XR headset â€” all of them contain Qualcomm's Hexagon NPU. If you quantize a model and deploy it to an edge device, there is a strong probability that the target hardware is Qualcomm.
 
-But Qualcomm's quantization stack is not just "export to ONNX and hope." It is a vertically integrated pipeline with its own quantization toolkit (AIMET), its own compilation SDK (QNN), its own runtime (QAIRT), and its own model hub (Qualcomm AI Hub). Each layer in this stack makes specific assumptions about how quantization is performed — and if you violate those assumptions, your model either runs slowly (falling back to CPU), produces garbage outputs (silent accuracy loss), or refuses to compile entirely.
+But Qualcomm's quantization stack is not just "export to ONNX and hope." It is a vertically integrated pipeline with its own quantization toolkit (AIMET), its own compilation SDK (QNN), its own runtime (QAIRT), and its own model hub (Qualcomm AI Hub). Each layer in this stack makes specific assumptions about how quantization is performed â€” and if you violate those assumptions, your model either runs slowly (falling back to CPU), produces garbage outputs (silent accuracy loss), or refuses to compile entirely.
 
 This chapter walks through every layer of the stack, from "I have a trained PyTorch model" to "it runs at 30 FPS on a Snapdragon phone," with the quantization details at each stage.
 
@@ -12,66 +14,66 @@ This chapter walks through every layer of the stack, from "I have a trained PyTo
 
 ## What Is "The Qualcomm Stack"?
 
-The Qualcomm AI stack is a set of tools that form a pipeline. But — and this is a critical nuance — the pipeline is **not** strictly linear. There are **two quantization paths**, and choosing the right one is an expert-level decision:
+The Qualcomm AI stack is a set of tools that form a pipeline. But â€” and this is a critical nuance â€” the pipeline is **not** strictly linear. There are **two quantization paths**, and choosing the right one is an expert-level decision:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    YOUR TRAINED MODEL                    │
-│              (PyTorch / TensorFlow / ONNX)               │
-└────────────────────────┬────────────────────────────────┘
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-              ▼                     ▼
-  ┌─────────────────────┐   ┌──────────────────────────┐
-  │     PATH A: AIMET    │   │   PATH B: QNN Native     │
-  │  (Optimization       │   │   (Convenience            │
-  │   Engine)            │   │    Quantization)          │
-  │                      │   │                           │
-  │ • CLE, AdaRound, QAT │   │ • --input_list for calib  │
-  │ • Per-layer diagnosis │   │ • MinMax / MSE scaling    │
-  │ • Mixed-precision     │   │ • No QAT fallback        │
-  │ • Full control        │   │ • Black-box               │
-  └──────────┬───────────┘   └────────────┬──────────────┘
-             │                            │
-             │  ONNX + .encodings         │  Raw ONNX (no encodings)
-             │                            │
-             └────────────┬───────────────┘
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                        QNN SDK                           │
-│           Qualcomm Neural Network SDK (Compiler)         │
-│   • Model conversion  • Graph optimization                │
-│   • Operator mapping  • Custom Op registration            │
-│   • Quantization encoding (from AIMET or self-computed)   │
-└────────────────────────┬────────────────────────────────┘
-                         │  Compiled context binary (.bin)
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                       QAIRT                              │
-│          Qualcomm AI Runtime (Execution)                 │
-│   • Backend selection (CPU/GPU/HTP)                       │
-│   • Memory management  • Inference execution              │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                   HEXAGON NPU (HTP)                      │
-│              Hardware tensor processor                    │
-│   • INT8/INT16 native  • VTCM (fast on-chip memory)      │
-│   • 256-byte vector width  • HVX instructions             │
-└─────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    YOUR TRAINED MODEL                    â”‚
+â”‚              (PyTorch / TensorFlow / ONNX)               â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚
+              â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+              â”‚                     â”‚
+              â–¼                     â–¼
+  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  â”‚     PATH A: AIMET    â”‚   â”‚   PATH B: QNN Native     â”‚
+  â”‚  (Optimization       â”‚   â”‚   (Convenience            â”‚
+  â”‚   Engine)            â”‚   â”‚    Quantization)          â”‚
+  â”‚                      â”‚   â”‚                           â”‚
+  â”‚ â€¢ CLE, AdaRound, QAT â”‚   â”‚ â€¢ --input_list for calib  â”‚
+  â”‚ â€¢ Per-layer diagnosis â”‚   â”‚ â€¢ MinMax / MSE scaling    â”‚
+  â”‚ â€¢ Mixed-precision     â”‚   â”‚ â€¢ No QAT fallback        â”‚
+  â”‚ â€¢ Full control        â”‚   â”‚ â€¢ Black-box               â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚                            â”‚
+             â”‚  ONNX + .encodings         â”‚  Raw ONNX (no encodings)
+             â”‚                            â”‚
+             â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                          â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                        QNN SDK                           â”‚
+â”‚           Qualcomm Neural Network SDK (Compiler)         â”‚
+â”‚   â€¢ Model conversion  â€¢ Graph optimization                â”‚
+â”‚   â€¢ Operator mapping  â€¢ Custom Op registration            â”‚
+â”‚   â€¢ Quantization encoding (from AIMET or self-computed)   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚  Compiled context binary (.bin)
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                       QAIRT                              â”‚
+â”‚          Qualcomm AI Runtime (Execution)                 â”‚
+â”‚   â€¢ Backend selection (CPU/GPU/HTP)                       â”‚
+â”‚   â€¢ Memory management  â€¢ Inference execution              â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                   HEXAGON NPU (HTP)                      â”‚
+â”‚              Hardware tensor processor                    â”‚
+â”‚   â€¢ INT8/INT16 native  â€¢ VTCM (fast on-chip memory)      â”‚
+â”‚   â€¢ 256-byte vector width  â€¢ HVX instructions             â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
-**Path A (AIMET → QNN)** is the **recommended path for production.** You get full control over quantization: CLE to rebalance weights, AdaRound to optimize rounding, QAT to fine-tune, and per-layer diagnostics to find which layers are hurting accuracy.
+**Path A (AIMET â†’ QNN)** is the **recommended path for production.** You get full control over quantization: CLE to rebalance weights, AdaRound to optimize rounding, QAT to fine-tune, and per-layer diagnostics to find which layers are hurting accuracy.
 
-**Path B (QNN Native)** is the **quick-and-dirty path.** The `qnn-onnx-converter` has built-in quantization: pass `--input_list calibration_images.txt` instead of `--quantization_overrides`, and QNN will calibrate and quantize in one shot. This works well for simple CNNs (MobileNet, ResNet) where default min-max quantization is sufficient. But for transformers or any model where INT8 accuracy is not trivially good, Path B is a dead end — if accuracy drops, you have no recovery tools.
+**Path B (QNN Native)** is the **quick-and-dirty path.** The `qnn-onnx-converter` has built-in quantization: pass `--input_list calibration_images.txt` instead of `--quantization_overrides`, and QNN will calibrate and quantize in one shot. This works well for simple CNNs (MobileNet, ResNet) where default min-max quantization is sufficient. But for transformers or any model where INT8 accuracy is not trivially good, Path B is a dead end â€” if accuracy drops, you have no recovery tools.
 
 Each layer has a specific job:
-- **AIMET** — makes your model *quantization-friendly* while you still have access to training data and gradients. The **optimization engine.**
-- **QNN** — *compiles* the quantized model into a graph that the hardware can execute. The **execution engine.** Also capable of basic quantization (Path B), but this is a convenience feature, not its primary role.
-- **QAIRT** — *runs* the compiled graph on-device, managing memory and dispatching to the right hardware backend.
-- **Qualcomm AI Hub** — a cloud service that lets you skip some of these steps for common models, providing pre-optimized binaries and profiling.
+- **AIMET** â€” makes your model *quantization-friendly* while you still have access to training data and gradients. The **optimization engine.**
+- **QNN** â€” *compiles* the quantized model into a graph that the hardware can execute. The **execution engine.** Also capable of basic quantization (Path B), but this is a convenience feature, not its primary role.
+- **QAIRT** â€” *runs* the compiled graph on-device, managing memory and dispatching to the right hardware backend.
+- **Qualcomm AI Hub** â€” a cloud service that lets you skip some of these steps for common models, providing pre-optimized binaries and profiling.
 
 The rest of this chapter walks through each layer in detail.
 
@@ -82,18 +84,18 @@ Before understanding the software, you need to understand what the software is t
 Every modern Snapdragon SoC contains a **Hexagon processor** with a dedicated **HTP (Hexagon Tensor Processor)** block. This is Qualcomm's neural processing unit. It is not a GPU. It is not a general-purpose CPU. It is a fixed-function/programmable hybrid designed specifically for tensor operations.
 
 **What HTP supports natively:**
-- **INT8** multiply-accumulate with INT32 accumulators — the primary quantized inference datatype.
-- **INT16** multiply-accumulate — for layers where INT8 is not accurate enough.
-- **FP16** — supported but slower than INT8 on HTP; often used as a fallback.
-- **HVX (Hexagon Vector eXtensions)** — 128-byte or 256-byte vector operations (depending on generation). Think of this as Qualcomm's version of AVX-512, but for mobile.
-- **VTCM (Vector Tightly Coupled Memory)** — a small, fast on-chip SRAM (typically 256KB–8MB depending on generation) that acts like an L0 cache for tensor data. Keeping activations in VTCM is the single most important performance optimization on Hexagon.
+- **INT8** multiply-accumulate with INT32 accumulators â€” the primary quantized inference datatype.
+- **INT16** multiply-accumulate â€” for layers where INT8 is not accurate enough.
+- **FP16** â€” supported but slower than INT8 on HTP; often used as a fallback.
+- **HVX (Hexagon Vector eXtensions)** â€” 128-byte or 256-byte vector operations (depending on generation). Think of this as Qualcomm's version of AVX-512, but for mobile.
+- **VTCM (Vector Tightly Coupled Memory)** â€” a small, fast on-chip SRAM (typically 256KBâ€“8MB depending on generation) that acts like an L0 cache for tensor data. Keeping activations in VTCM is the single most important performance optimization on Hexagon.
 
 **What HTP does NOT support natively:**
-- FP32 inference — runs on the CPU fallback, which is 10–50× slower.
-- Arbitrary dynamic shapes — the compiler needs static or bounded shapes.
-- Operators outside the supported list — unsupported ops fall back to CPU, serializing the pipeline and killing performance.
+- FP32 inference â€” runs on the CPU fallback, which is 10â€“50Ã— slower.
+- Arbitrary dynamic shapes â€” the compiler needs static or bounded shapes.
+- Operators outside the supported list â€” unsupported ops fall back to CPU, serializing the pipeline and killing performance.
 
-**Why this matters for quantization:** If your model produces an INT8-quantized graph where every operator is HTP-compatible, the entire inference runs on the NPU. If even one operator is unsupported, the graph is split: part runs on HTP, data is copied back to CPU, the unsupported op runs on CPU, data is copied back to HTP, and the remaining graph continues. This round-trip typically costs 2–5ms per split — which can be more than the entire inference time of a well-optimized model.
+**Why this matters for quantization:** If your model produces an INT8-quantized graph where every operator is HTP-compatible, the entire inference runs on the NPU. If even one operator is unsupported, the graph is split: part runs on HTP, data is copied back to CPU, the unsupported op runs on CPU, data is copied back to HTP, and the remaining graph continues. This round-trip typically costs 2â€“5ms per split â€” which can be more than the entire inference time of a well-optimized model.
 
 The quantization choices you make (symmetric vs. asymmetric, per-tensor vs. per-channel, which layers to leave in FP16) directly determine whether operators land on HTP or fall back to CPU.
 
@@ -108,15 +110,15 @@ The quantization choices you make (symmetric vs. asymmetric, per-tensor vs. per-
 | 8 Gen 3 | V75 | 4MB | ~45 | Micro-tile inference |
 | X Elite | V73 (multi-core) | 8MB | ~75 | Multi-NPU, LLM support |
 
-The trend: more VTCM, more TOPS, and wider quantization support with each generation. Models that run well on Gen 1 will fly on Gen 3 — but models that were never properly quantized will crawl on all of them.
+The trend: more VTCM, more TOPS, and wider quantization support with each generation. Models that run well on Gen 1 will fly on Gen 3 â€” but models that were never properly quantized will crawl on all of them.
 
 ---
 
-## AIMET — AI Model Efficiency Toolkit
+## AIMET â€” AI Model Efficiency Toolkit
 
 AIMET is Qualcomm's open-source quantization and compression toolkit. It is a Python library that wraps around PyTorch (and optionally TensorFlow/Keras) and provides quantization techniques specifically designed to produce models that run well on Qualcomm hardware.
 
-AIMET is **not** a compiler. It does not produce device-ready binaries. Its job is to take a floating-point model and produce a quantization-friendly version — with quantization parameters (scales and zero-points) baked in — that can then be handed to QNN for compilation.
+AIMET is **not** a compiler. It does not produce device-ready binaries. Its job is to take a floating-point model and produce a quantization-friendly version â€” with quantization parameters (scales and zero-points) baked in â€” that can then be handed to QNN for compilation.
 
 Think of AIMET as the "training-side" tool and QNN as the "deployment-side" tool. AIMET runs wherever you train (cloud GPU, workstation). QNN runs wherever you compile (workstation, CI pipeline, or the device itself).
 
@@ -135,15 +137,15 @@ AIMET is open source: https://github.com/quic/aimet
 
 AIMET provides four core capabilities:
 
-1. **Post-Training Quantization (PTQ)** — quantize a model without any retraining. You provide a small calibration dataset (typically 500–2000 samples), AIMET runs inference to observe activation ranges, and it computes optimal quantization parameters.
+1. **Post-Training Quantization (PTQ)** â€” quantize a model without any retraining. You provide a small calibration dataset (typically 500â€“2000 samples), AIMET runs inference to observe activation ranges, and it computes optimal quantization parameters.
 
-2. **Quantization-Aware Training (QAT)** — insert fake-quantization nodes into the training graph and fine-tune the model so it learns to be robust to quantization noise. Requires training data and a few epochs of training.
+2. **Quantization-Aware Training (QAT)** â€” insert fake-quantization nodes into the training graph and fine-tune the model so it learns to be robust to quantization noise. Requires training data and a few epochs of training.
 
-3. **Cross-Layer Equalization (CLE)** — a mathematical technique that redistributes weight ranges across consecutive layers to make them more uniform and easier to quantize. This is a free improvement — no training data required.
+3. **Cross-Layer Equalization (CLE)** â€” a mathematical technique that redistributes weight ranges across consecutive layers to make them more uniform and easier to quantize. This is a free improvement â€” no training data required.
 
-4. **AdaRound (Adaptive Rounding)** — instead of rounding each weight to the nearest integer (which is what naive quantization does), AdaRound learns the optimal rounding direction (up or down) for each weight to minimize the overall layer output error. Requires a calibration dataset but not full retraining.
+4. **AdaRound (Adaptive Rounding)** â€” instead of rounding each weight to the nearest integer (which is what naive quantization does), AdaRound learns the optimal rounding direction (up or down) for each weight to minimize the overall layer output error. Requires a calibration dataset but not full retraining.
 
-These techniques can be composed. A typical pipeline is: CLE → AdaRound → QAT. Each step progressively improves quantization quality.
+These techniques can be composed. A typical pipeline is: CLE â†’ AdaRound â†’ QAT. Each step progressively improves quantization quality.
 
 ---
 
@@ -159,22 +161,22 @@ No zero-point. The floating-point zero maps exactly to the integer zero. This is
 **Asymmetric quantization:**
 $$q = \text{round}\left(\frac{x}{S}\right) + Z, \quad S = \frac{x_{\max} - x_{\min}}{2^b - 1}, \quad Z = \text{round}\left(\frac{-x_{\min}}{S}\right)$$
 
-Non-zero zero-point. More accurate for activations that are not centered around zero (e.g., post-ReLU activations that are always ≥ 0). HTP supports asymmetric quantization for activations.
+Non-zero zero-point. More accurate for activations that are not centered around zero (e.g., post-ReLU activations that are always â‰¥ 0). HTP supports asymmetric quantization for activations.
 
 **Granularity:**
-- **Per-tensor** — one scale/zero-point for the entire tensor. Fastest, least accurate.
-- **Per-channel** — one scale/zero-point per output channel (for weights). More accurate, supported on HTP.
+- **Per-tensor** â€” one scale/zero-point for the entire tensor. Fastest, least accurate.
+- **Per-channel** â€” one scale/zero-point per output channel (for weights). More accurate, supported on HTP.
 
 **Bit-widths:**
-- **INT8** — the primary target. Best performance on HTP.
-- **INT16** — for sensitive layers. 2× slower than INT8 on HTP, but sometimes necessary.
-- **INT4** — weight-only, on newer Hexagon generations (Gen 2+). Weights stored in INT4, compute in INT8.
+- **INT8** â€” the primary target. Best performance on HTP.
+- **INT16** â€” for sensitive layers. 2Ã— slower than INT8 on HTP, but sometimes necessary.
+- **INT4** â€” weight-only, on newer Hexagon generations (Gen 2+). Weights stored in INT4, compute in INT8.
 
 **Practical rule:** Start with per-channel symmetric weights + per-tensor asymmetric activations, both INT8. This is the default that QNN expects, and it runs at full speed on HTP.
 
-**Why HTP *specifically* prefers symmetric weights — the MAC hardware reason:**
+**Why HTP *specifically* prefers symmetric weights â€” the MAC hardware reason:**
 
-This is not just a convention — it is a hardware constraint. Consider the full integer-only multiply-accumulate (MAC) expansion for an asymmetric weight:
+This is not just a convention â€” it is a hardware constraint. Consider the full integer-only multiply-accumulate (MAC) expansion for an asymmetric weight:
 
 $$Y = S_w \cdot S_x \cdot \sum_i (W_{q,i} - Z_w)(X_{q,i} - Z_x)$$
 
@@ -186,7 +188,7 @@ That is four terms per MAC. With **symmetric weights** (\\(Z_w = 0\\)), the seco
 
 $$Y = S_w \cdot S_x \cdot \left[\sum_i W_{q,i} X_{q,i} - Z_x \sum_i W_{q,i}\right]$$
 
-The \\(Z_x \sum_i W_{q,i}\\) term is a **precomputable bias** — it depends only on weights and the activation zero-point, both of which are known at compile time. QNN precomputes this and folds it into the bias. The HTP hardware then only needs to execute the raw \\(\sum_i W_{q,i} X_{q,i}\\) MAC — which is exactly what its integer-only pipeline is optimized for.
+The \\(Z_x \sum_i W_{q,i}\\) term is a **precomputable bias** â€” it depends only on weights and the activation zero-point, both of which are known at compile time. QNN precomputes this and folds it into the bias. The HTP hardware then only needs to execute the raw \\(\sum_i W_{q,i} X_{q,i}\\) MAC â€” which is exactly what its integer-only pipeline is optimized for.
 
 If you use asymmetric weights (\\(Z_w \neq 0\\)), the hardware must compute the extra \\(Z_w \sum_i X_{q,i}\\) term at runtime. This cannot be precomputed because \\(X_{q,i}\\) changes every inference. The result: additional instructions per MAC, wasted cycles, and potentially a fallback to a slower kernel path.
 
@@ -196,7 +198,7 @@ If you use asymmetric weights (\\(Z_w \neq 0\\)), the hardware must compute the 
 
 **Group-wise Quantization (for LLMs):**
 
-Per-channel quantization assigns one scale per output channel. For a weight matrix of shape \\([\text{out}, \text{in}]\\), that is \\(\text{out}\\) scales. But for large language models, per-channel is sometimes too coarse — a single channel in a 4096-wide projection might have weights spanning a wide range.
+Per-channel quantization assigns one scale per output channel. For a weight matrix of shape \\([\text{out}, \text{in}]\\), that is \\(\text{out}\\) scales. But for large language models, per-channel is sometimes too coarse â€” a single channel in a 4096-wide projection might have weights spanning a wide range.
 
 **Group-wise quantization** splits each channel into groups of \\(G\\) consecutive elements and assigns a separate scale to each group:
 
@@ -261,7 +263,7 @@ In the exported encodings JSON, group-wise scales appear as arrays:
 }
 ```
 
-QNN reads these group scales and compiles them into the context binary. At runtime on HTP, the group-wise dequantization is fused into the GEMM kernel — no separate dequant pass.
+QNN reads these group scales and compiles them into the context binary. At runtime on HTP, the group-wise dequantization is fused into the GEMM kernel â€” no separate dequant pass.
 
 **When to use group-wise:** INT4 weight-only quantization for LLMs (W4A16 or W4A8). Per-channel INT8 rarely needs group-wise refinement, but INT4 almost always does.
 
@@ -269,11 +271,11 @@ QNN reads these group scales and compiles them into the context binary. At runti
 
 ### Cross-Layer Equalization (CLE)
 
-CLE is AIMET's "free lunch" — it improves quantization accuracy without any training data.
+CLE is AIMET's "free lunch" â€” it improves quantization accuracy without any training data.
 
 **The problem it solves:** In many models, consecutive layers have very different weight ranges. Layer A might have weights in [-0.01, 0.01] while layer B has weights in [-5.0, 5.0]. When both are quantized to INT8, layer A wastes most of its quantization range (only using a tiny fraction of the [-127, 127] integer range), while layer B uses the full range.
 
-**The insight:** For consecutive linear layers (or conv → conv sequences) with ReLU activations in between, you can mathematically rescale the weights of one layer up and the weights of the next layer down, without changing the model's output. This is because ReLU is a positive-homogeneous function: \\(\text{ReLU}(\alpha x) = \alpha \cdot \text{ReLU}(x)\\) for \\(\alpha > 0\\).
+**The insight:** For consecutive linear layers (or conv â†’ conv sequences) with ReLU activations in between, you can mathematically rescale the weights of one layer up and the weights of the next layer down, without changing the model's output. This is because ReLU is a positive-homogeneous function: \\(\text{ReLU}(\alpha x) = \alpha \cdot \text{ReLU}(x)\\) for \\(\alpha > 0\\).
 
 **The math:** Given two consecutive layers with weight matrices \\(W_1\\) and \\(W_2\\), and a diagonal scaling matrix \\(S\\):
 
@@ -295,7 +297,7 @@ That is the entire API. One function call. It modifies the model weights in-plac
 
 **When CLE helps:** Models with batch normalization folded into convolutions (common in deployment), models with large weight range variation across layers.
 
-**When CLE does NOT help:** Transformer models (attention layers are not simple conv→ReLU→conv sequences), models that don't use ReLU, models where weight ranges are already balanced.
+**When CLE does NOT help:** Transformer models (attention layers are not simple convâ†’ReLUâ†’conv sequences), models that don't use ReLU, models where weight ranges are already balanced.
 
 ---
 
@@ -305,9 +307,9 @@ Standard quantization rounds each weight to the nearest integer:
 
 $$q_i = \lfloor w_i / S \rceil$$
 
-This seems optimal per-element, but it is not optimal for the layer's output. Rounding weight \\(w_3\\) up might increase the error for some inputs, while rounding it down might decrease the error — and the optimal direction depends on the correlations between weights and the typical input distribution.
+This seems optimal per-element, but it is not optimal for the layer's output. Rounding weight \\(w_3\\) up might increase the error for some inputs, while rounding it down might decrease the error â€” and the optimal direction depends on the correlations between weights and the typical input distribution.
 
-**AdaRound** learns a binary rounding decision for each weight — round up or round down — by minimizing the layer-wise reconstruction error:
+**AdaRound** learns a binary rounding decision for each weight â€” round up or round down â€” by minimizing the layer-wise reconstruction error:
 
 $$\min_{\mathbf{v}} \| W\mathbf{x} - \tilde{W}(\mathbf{v})\mathbf{x} \|_F^2 + \lambda \sum_i h(v_i)$$
 
@@ -317,7 +319,7 @@ where:
 - \\(h(v_i)\\) is a regularizer that pushes \\(v_i\\) toward 0 or 1 (forcing a hard rounding decision)
 - \\(\mathbf{x}\\) comes from the calibration dataset
 
-This is solved with gradient descent — typically 10,000 iterations per layer, which takes seconds to minutes per layer on a GPU.
+This is solved with gradient descent â€” typically 10,000 iterations per layer, which takes seconds to minutes per layer on a GPU.
 
 **AIMET code:**
 ```python
@@ -338,21 +340,21 @@ model = Adaround.apply_adaround(
 )
 ```
 
-**Impact:** AdaRound typically recovers 0.5–2% accuracy over naive rounding for INT8 PTQ. For models that are borderline (e.g., 1.5% accuracy drop with naive PTQ), AdaRound can bring it within the 1% acceptable threshold.
+**Impact:** AdaRound typically recovers 0.5â€“2% accuracy over naive rounding for INT8 PTQ. For models that are borderline (e.g., 1.5% accuracy drop with naive PTQ), AdaRound can bring it within the 1% acceptable threshold.
 
-**Cost:** Requires a calibration dataset (typically the same one used for PTQ). Takes 10–60 minutes for a full model on a single GPU. No labels needed — it minimizes reconstruction error, not task loss.
+**Cost:** Requires a calibration dataset (typically the same one used for PTQ). Takes 10â€“60 minutes for a full model on a single GPU. No labels needed â€” it minimizes reconstruction error, not task loss.
 
 ---
 
 ### AIMET Quantization-Aware Training (QAT)
 
-When PTQ (with CLE + AdaRound) is not enough — typically for INT8 quantization of transformer models, or for INT4 quantization of any model — AIMET provides QAT.
+When PTQ (with CLE + AdaRound) is not enough â€” typically for INT8 quantization of transformer models, or for INT4 quantization of any model â€” AIMET provides QAT.
 
 AIMET QAT inserts **fake quantization nodes** (also called quantization simulation nodes or "quant-dequant" wrappers) around each layer:
 
 ```
-Original:         x → Linear → y
-With QAT wrapper:  x → FakeQuant → Linear(FakeQuant(W)) → FakeQuant → y
+Original:         x â†’ Linear â†’ y
+With QAT wrapper:  x â†’ FakeQuant â†’ Linear(FakeQuant(W)) â†’ FakeQuant â†’ y
 ```
 
 During forward pass:
@@ -362,7 +364,7 @@ During forward pass:
 4. The output is fake-quantized.
 
 During backward pass:
-- Gradients flow through the fake-quantization nodes using the **Straight-Through Estimator (STE)** — the gradient of the rounding function (which has zero gradient almost everywhere) is approximated as 1.
+- Gradients flow through the fake-quantization nodes using the **Straight-Through Estimator (STE)** â€” the gradient of the rounding function (which has zero gradient almost everywhere) is approximated as 1.
 
 **AIMET QAT code:**
 ```python
@@ -401,18 +403,18 @@ sim.export(path="./quantized_model", filename_prefix="resnet50_int8",
 1. An ONNX (or torchscript) model with the architecture
 2. A JSON **encodings file** containing the scale and zero-point for every quantized tensor
 
-The encodings file is critical — it is what QNN reads to know how to quantize each tensor.
+The encodings file is critical â€” it is what QNN reads to know how to quantize each tensor.
 
 **A note on `quant_scheme='tf_enhanced'`:**
 
-The name `tf_enhanced` is confusing — it does NOT mean "TensorFlow only." In AIMET's terminology:
+The name `tf_enhanced` is confusing â€” it does NOT mean "TensorFlow only." In AIMET's terminology:
 - `'tf'` = TensorFlow-style quantization: uses scale and offset (zero-point) encoding. This is the **scale/offset** scheme where \\(q = \text{clamp}(\text{round}(x/S) + Z, 0, 255)\\). HTP is designed around this scheme for activations.
-- `'tf_enhanced'` = Same scale/offset scheme, but with **enhanced calibration** — AIMET uses a more sophisticated algorithm to find the optimal clipping range (minimizing MSE rather than just using min/max). This is almost always the right choice.
+- `'tf_enhanced'` = Same scale/offset scheme, but with **enhanced calibration** â€” AIMET uses a more sophisticated algorithm to find the optimal clipping range (minimizing MSE rather than just using min/max). This is almost always the right choice.
 - `'percentile'` = Uses a percentile of the observed range instead of the full min/max.
 
-For LLMs and transformer models specifically, the asymmetric (scale/offset) nature of `tf_enhanced` is critical. LLM activations are almost never centered at zero — post-GELU, post-SiLU, and post-Softmax activations are all asymmetric. Using symmetric quantization for these activations wastes half the INT8 range. The `tf_enhanced` scheme automatically handles this with a non-zero zero-point.
+For LLMs and transformer models specifically, the asymmetric (scale/offset) nature of `tf_enhanced` is critical. LLM activations are almost never centered at zero â€” post-GELU, post-SiLU, and post-Softmax activations are all asymmetric. Using symmetric quantization for these activations wastes half the INT8 range. The `tf_enhanced` scheme automatically handles this with a non-zero zero-point.
 
-**How many epochs?** Typically 5–15 epochs with a learning rate 10–100× smaller than original training. You are not retraining from scratch — you are fine-tuning the model to tolerate quantization noise.
+**How many epochs?** Typically 5â€“15 epochs with a learning rate 10â€“100Ã— smaller than original training. You are not retraining from scratch â€” you are fine-tuning the model to tolerate quantization noise.
 
 ---
 
@@ -484,14 +486,14 @@ After step 8, you have an ONNX file and an encodings file. These are the inputs 
 
 ---
 
-## QNN Native Quantization vs. AIMET — When to Use Which
+## QNN Native Quantization vs. AIMET â€” When to Use Which
 
 Before diving into QNN, it is important to address a common question: **"Why do I need AIMET at all? QNN can quantize my model directly."**
 
 This is true. The `qnn-onnx-converter` has built-in quantization. You can skip AIMET entirely:
 
 ```bash
-# QNN Native Quantization (Path B) — no AIMET, no encodings file
+# QNN Native Quantization (Path B) â€” no AIMET, no encodings file
 qnn-onnx-converter \
     --input_network model.onnx \
     --input_list calibration_images.txt \    # QNN calibrates internally
@@ -505,22 +507,22 @@ QNN uses the `--input_list` to run calibration internally and compute scales via
 | Capability | QNN Native Quantization | AIMET |
 |-----------|------------------------|-------|
 | **Calibration method** | MinMax, MSE | MinMax, MSE, Entropy, Percentile, learned (AdaRound) |
-| **Cross-Layer Equalization** | ❌ Not available | ✅ One-line API |
-| **AdaRound** | ❌ Not available | ✅ Learns optimal rounding per weight |
-| **Quantization-Aware Training** | ❌ Not available — if PTQ fails, you are stuck | ✅ Fine-tune with fake-quant nodes |
-| **Per-layer diagnostics** | ❌ Black box — "accuracy dropped 8%" with no explanation | ✅ Inspect each layer's quantization error |
-| **Mixed-precision selection** | ❌ All layers same precision (or manual override) | ✅ Automated sensitivity analysis |
-| **Group-wise quantization** | Limited | ✅ Full control with config files |
-| **Speed of workflow** | ✅ Fast — one command | ❌ Slower — Python scripting, calibration runs |
+| **Cross-Layer Equalization** | âŒ Not available | âœ… One-line API |
+| **AdaRound** | âŒ Not available | âœ… Learns optimal rounding per weight |
+| **Quantization-Aware Training** | âŒ Not available â€” if PTQ fails, you are stuck | âœ… Fine-tune with fake-quant nodes |
+| **Per-layer diagnostics** | âŒ Black box â€” "accuracy dropped 8%" with no explanation | âœ… Inspect each layer's quantization error |
+| **Mixed-precision selection** | âŒ All layers same precision (or manual override) | âœ… Automated sensitivity analysis |
+| **Group-wise quantization** | Limited | âœ… Full control with config files |
+| **Speed of workflow** | âœ… Fast â€” one command | âŒ Slower â€” Python scripting, calibration runs |
 | **When to use** | Quick prototyping, simple CNNs, models that quantize easily | Production deployment, transformers, accuracy-sensitive models |
 
 **The decision tree:**
 
 ```
 Is your model a standard CNN (ResNet, MobileNet, EfficientNet)?
-  └─ YES → Try QNN Native first. If accuracy drop < 1%, ship it.
+  â””â”€ YES â†’ Try QNN Native first. If accuracy drop < 1%, ship it.
            If accuracy drop > 1%, switch to AIMET.
-  └─ NO (transformer, custom architecture, LLM) → Go directly to AIMET.
+  â””â”€ NO (transformer, custom architecture, LLM) â†’ Go directly to AIMET.
            QNN Native will almost certainly fail for these models.
 ```
 
@@ -550,7 +552,7 @@ for name, module in sim.model.named_modules():
         print(f"{name}: accuracy without quant = {acc:.2f}%")
 ```
 
-This tells you exactly which layer, when quantized, causes the most damage. You then target that layer with INT16, AdaRound, or QAT — surgical fixes rather than blind retries.
+This tells you exactly which layer, when quantized, causes the most damage. You then target that layer with INT16, AdaRound, or QAT â€” surgical fixes rather than blind retries.
 
 **Bottom line:** QNN Native is the convenience path. AIMET is the engineering path. For anything beyond a demo, use AIMET.
 
@@ -558,17 +560,17 @@ This tells you exactly which layer, when quantized, causes the most damage. You 
 
 ### Why Experts Abandon QNN Native Quantization for Transformers
 
-This sidebar exists because the comparison table above might still leave you thinking: *"I'll try QNN Native first, and if it fails, switch to AIMET."* For transformers, that is a waste of time. Here is why QNN Native is structurally incapable of quantizing transformers correctly — and this connects directly to the outlier theory from Chapter 14.
+This sidebar exists because the comparison table above might still leave you thinking: *"I'll try QNN Native first, and if it fails, switch to AIMET."* For transformers, that is a waste of time. Here is why QNN Native is structurally incapable of quantizing transformers correctly â€” and this connects directly to the outlier theory from Chapter 14.
 
 **The fundamental problem:** QNN Native uses MinMax or MSE calibration. Both methods compute a single scale based on the observed range of values. For a transformer linear layer with activation outliers (Chapter 14), the calibration sees something like this:
 
 ```
 Channel activations observed during calibration:
-  Channel 0:   values in [-1.2, 1.8]     ← normal
-  Channel 1:   values in [-0.9, 2.1]     ← normal
-  Channel 2:   values in [-0.5, 1.4]     ← normal
+  Channel 0:   values in [-1.2, 1.8]     â† normal
+  Channel 1:   values in [-0.9, 2.1]     â† normal
+  Channel 2:   values in [-0.5, 1.4]     â† normal
   ...
-  Channel 127: values in [-3.0, 62.0]    ← OUTLIER (Chapter 14 pattern)
+  Channel 127: values in [-3.0, 62.0]    â† OUTLIER (Chapter 14 pattern)
 ```
 
 QNN Native's MinMax calibrator computes:
@@ -581,13 +583,13 @@ Out of 256 available INT8 levels, 23 are used. **91% of the quantization budget 
 
 **What AIMET does differently:**
 
-1. **CLE** — even though CLE was designed for conv→ReLU→conv patterns, AIMET applies a generalized version to consecutive linear layers in transformers. The MLP blocks (`gate_proj → SiLU → up_proj → down_proj`) benefit from CLE rebalancing the weight ranges across projections.
+1. **CLE** â€” even though CLE was designed for convâ†’ReLUâ†’conv patterns, AIMET applies a generalized version to consecutive linear layers in transformers. The MLP blocks (`gate_proj â†’ SiLU â†’ up_proj â†’ down_proj`) benefit from CLE rebalancing the weight ranges across projections.
 
-2. **AdaRound** — QNN Native rounds every weight to the nearest integer. AdaRound *learns* the optimal rounding direction per weight by minimizing layer output error on calibration data. For the outlier-heavy layers, this recovers 0.5–1.5% accuracy — often the difference between "usable" and "garbage."
+2. **AdaRound** â€” QNN Native rounds every weight to the nearest integer. AdaRound *learns* the optimal rounding direction per weight by minimizing layer output error on calibration data. For the outlier-heavy layers, this recovers 0.5â€“1.5% accuracy â€” often the difference between "usable" and "garbage."
 
-3. **Per-layer sensitivity analysis** — AIMET can disable quantization for each layer individually and measure the accuracy impact. This reveals that (for a typical TinyLlama) layers 8, 14, and 19 cause 70% of the accuracy degradation. You promote those three layers to INT16. QNN Native has no mechanism for this discovery.
+3. **Per-layer sensitivity analysis** â€” AIMET can disable quantization for each layer individually and measure the accuracy impact. This reveals that (for a typical TinyLlama) layers 8, 14, and 19 cause 70% of the accuracy degradation. You promote those three layers to INT16. QNN Native has no mechanism for this discovery.
 
-4. **QAT** — when PTQ still falls short, AIMET enables QAT. The model learns to tolerate quantization noise during fine-tuning. QNN Native has no training path. If PTQ fails, your only option is to go back to the beginning.
+4. **QAT** â€” when PTQ still falls short, AIMET enables QAT. The model learns to tolerate quantization noise during fine-tuning. QNN Native has no training path. If PTQ fails, your only option is to go back to the beginning.
 
 **The empirical reality for a TinyLlama-1.1B on Snapdragon 8 Gen 3:**
 
@@ -602,11 +604,11 @@ Out of 256 available INT8 levels, 23 are used. **91% of the quantization budget 
 
 The QNN Native path is a dead end at +4.9 perplexity. The AIMET path gets within 0.3 of FP32. There is no comparison.
 
-Snapdragon is the **ultimate test** of the transformer quantization theories discussed in Chapter 14. Every failure pattern — outlier explosion, resolution collapse, attention score distortion — manifests here. And every mitigation technique — CLE, SmoothQuant, AdaRound, QAT — is deployed here through AIMET. The theory is not academic. It is the difference between a model that runs at 10 tokens/sec with good quality and one that produces incoherent text.
+Snapdragon is the **ultimate test** of the transformer quantization theories discussed in Chapter 14. Every failure pattern â€” outlier explosion, resolution collapse, attention score distortion â€” manifests here. And every mitigation technique â€” CLE, SmoothQuant, AdaRound, QAT â€” is deployed here through AIMET. The theory is not academic. It is the difference between a model that runs at 10 tokens/sec with good quality and one that produces incoherent text.
 
 ---
 
-## QNN — Qualcomm Neural Network SDK
+## QNN â€” Qualcomm Neural Network SDK
 
 QNN is Qualcomm's model compilation and inference SDK. It takes a quantized model (typically ONNX + encodings from AIMET) and compiles it into a binary that runs on Hexagon HTP.
 
@@ -618,11 +620,11 @@ If AIMET is "make the model quantization-friendly," QNN is "make the model hardw
 
 QNN performs several transformations:
 
-1. **Model conversion** — reads ONNX (or other formats) and converts it to QNN's internal graph representation.
-2. **Graph optimization** — fuses operators (conv + bias + ReLU → single fused op), removes redundant operations, rewrites patterns into hardware-efficient equivalents.
-3. **Operator mapping** — maps each operator to a Hexagon HTP implementation. If an operator has no HTP implementation, it is flagged for CPU fallback.
-4. **Quantization encoding** — reads the AIMET encodings file (or performs its own quantization if you did not use AIMET) and bakes the scale/zero-point information into the graph.
-5. **Compilation** — produces a **context binary** (.bin file) that contains the compiled graph, weights, and all metadata needed for on-device execution. 
+1. **Model conversion** â€” reads ONNX (or other formats) and converts it to QNN's internal graph representation.
+2. **Graph optimization** â€” fuses operators (conv + bias + ReLU â†’ single fused op), removes redundant operations, rewrites patterns into hardware-efficient equivalents.
+3. **Operator mapping** â€” maps each operator to a Hexagon HTP implementation. If an operator has no HTP implementation, it is flagged for CPU fallback.
+4. **Quantization encoding** â€” reads the AIMET encodings file (or performs its own quantization if you did not use AIMET) and bakes the scale/zero-point information into the graph.
+5. **Compilation** â€” produces a **context binary** (.bin file) that contains the compiled graph, weights, and all metadata needed for on-device execution. 
 
 ---
 
@@ -632,18 +634,18 @@ The compilation pipeline looks like this:
 
 ```
 resnet50.onnx + resnet50.encodings
-        │
-        ▼
-   qnn-onnx-converter          ← Converts ONNX to QNN C++ model
-        │
-        ▼
-   QNN model.cpp + model.bin    ← Intermediate representation
-        │
-        ▼
-   qnn-context-binary-generator ← Compiles for target hardware
-        │
-        ▼
-   resnet50_htp.bin             ← Ready to run on Hexagon
+        â”‚
+        â–¼
+   qnn-onnx-converter          â† Converts ONNX to QNN C++ model
+        â”‚
+        â–¼
+   QNN model.cpp + model.bin    â† Intermediate representation
+        â”‚
+        â–¼
+   qnn-context-binary-generator â† Compiles for target hardware
+        â”‚
+        â–¼
+   resnet50_htp.bin             â† Ready to run on Hexagon
 ```
 
 **Command-line example:**
@@ -663,9 +665,9 @@ qnn-context-binary-generator \
 ```
 
 The `--backend` flag is critical. It determines what hardware the model is compiled for:
-- `libQnnHtp.so` — Hexagon Tensor Processor (NPU). This is what you want for production.
-- `libQnnCpu.so` — CPU reference. Useful for debugging.
-- `libQnnGpu.so` — GPU (Adreno). Sometimes used when HTP is not available or for FP16 models.
+- `libQnnHtp.so` â€” Hexagon Tensor Processor (NPU). This is what you want for production.
+- `libQnnCpu.so` â€” CPU reference. Useful for debugging.
+- `libQnnGpu.so` â€” GPU (Adreno). Sometimes used when HTP is not available or for FP16 models.
 
 ---
 
@@ -684,18 +686,18 @@ Not every ONNX operator maps to a Hexagon HTP implementation. This is the single
 - Softmax
 - LayerNorm (recent Hexagon versions)
 
-**⚠ The HTP vs. HVX Split — A Hidden Bottleneck:**
+**âš  The HTP vs. HVX Split â€” A Hidden Bottleneck:**
 
 The Hexagon processor contains two distinct compute units: the **HTP** (tensor processor, for matrix math) and the **HVX** (vector extensions, for element-wise and reduction operations). These are not the same hardware.
 
 Critically, **Softmax** and **LayerNorm** often run on **HVX, not HTP**. They involve reductions (sum, max) and non-linear functions (exp, division) that the HTP's integer MAC pipeline cannot execute. Even though QNN does not flag these operators as "CPU fallback," they are running on a different (and slower) part of the Hexagon processor.
 
-This creates a data transfer bottleneck within the Hexagon itself: HTP computes a matrix multiply → result is transferred to HVX for Softmax/LayerNorm → result is transferred back to HTP for the next matrix multiply. For transformer models with alternating Linear-LayerNorm-Linear-Softmax patterns, this HTP↔HVX ping-pong becomes a significant fraction of total inference time.
+This creates a data transfer bottleneck within the Hexagon itself: HTP computes a matrix multiply â†’ result is transferred to HVX for Softmax/LayerNorm â†’ result is transferred back to HTP for the next matrix multiply. For transformer models with alternating Linear-LayerNorm-Linear-Softmax patterns, this HTPâ†”HVX ping-pong becomes a significant fraction of total inference time.
 
 In profiling output (`qnn-net-run --profiling_level detailed`), look for operators marked as running on `HVX` rather than `HTP`. If Softmax and LayerNorm together take >30% of inference time, this bottleneck is dominating.
 
 **Mitigation strategies:**
-- Use **RMSNorm** instead of LayerNorm where possible — RMSNorm skips the mean subtraction, which is one fewer reduction. Some recent Hexagon versions have optimized RMSNorm kernels.
+- Use **RMSNorm** instead of LayerNorm where possible â€” RMSNorm skips the mean subtraction, which is one fewer reduction. Some recent Hexagon versions have optimized RMSNorm kernels.
 - Use **approximate Softmax** or fused attention kernels that keep the Softmax inside the HTP pipeline.
 - On newest SoCs (8 Gen 3, X Elite), Qualcomm has added fused multi-head attention ops that execute entirely on HTP, avoiding the split.
 
@@ -727,7 +729,7 @@ The debug output shows which operators were placed on HTP and which fell back. A
 
 If you used AIMET, you already have an encodings file. But understanding the format is important for debugging.
 
-**The encodings JSON is the contract.** It is the single bridge between your PyTorch training world and the QNN compiler. Every quantization parameter — every scale, every zero-point, every bit-width decision — is captured in this file. If this file is wrong, your model will produce garbage on device, even if it was perfect in simulation.
+**The encodings JSON is the contract.** It is the single bridge between your PyTorch training world and the QNN compiler. Every quantization parameter â€” every scale, every zero-point, every bit-width decision â€” is captured in this file. If this file is wrong, your model will produce garbage on device, even if it was perfect in simulation.
 
 The encodings file is a JSON file that specifies, for every quantized tensor in the model, its quantization parameters:
 
@@ -773,7 +775,7 @@ The encodings file is a JSON file that specifies, for every quantized tensor in 
 }
 ```
 
-**Reading this file — what each field means in practice:**
+**Reading this file â€” what each field means in practice:**
 
 | Field | What It Controls | Debugging Signal |
 |-------|-----------------|------------------|
@@ -807,13 +809,13 @@ The encodings file is a JSON file that specifies, for every quantized tensor in 
     "offset": 0
 }
 ```
-`min: 0.0` because ReLU never produces negatives. `max: 6.0` suggests ReLU6. `offset: 0` because the min is exactly zero — no need for a zero-point shift.
+`min: 0.0` because ReLU never produces negatives. `max: 6.0` suggests ReLU6. `offset: 0` because the min is exactly zero â€” no need for a zero-point shift.
 
 **Red flags in the encodings:**
-- `scale > 0.5` for any layer — quantization is extremely coarse.
-- `is_symmetric: true` for an activation after ReLU — wastes half the INT8 range.
-- `is_symmetric: false` for weights — will trigger slower MAC path on HTP.
-- `min` and `max` have the same sign but `offset` is 0 — possible miscalibration.
+- `scale > 0.5` for any layer â€” quantization is extremely coarse.
+- `is_symmetric: true` for an activation after ReLU â€” wastes half the INT8 range.
+- `is_symmetric: false` for weights â€” will trigger slower MAC path on HTP.
+- `min` and `max` have the same sign but `offset` is 0 â€” possible miscalibration.
 
 ---
 
@@ -828,7 +830,7 @@ The compiled context binary (`.bin` file) is the final artifact that runs on dev
 
 **Important:** Context binaries are hardware-specific. A binary compiled for Snapdragon 8 Gen 2 will NOT run on Snapdragon 8 Gen 1. You must compile for each target hardware separately.
 
-Context binaries can be cached on device. The first inference call loads and initializes the binary (which may take 100ms–2s for large models). Subsequent inference calls reuse the initialized context and are fast.
+Context binaries can be cached on device. The first inference call loads and initializes the binary (which may take 100msâ€“2s for large models). Subsequent inference calls reuse the initialized context and are fast.
 
 ---
 
@@ -878,30 +880,30 @@ The `input_list.txt` file lists the raw input tensor files (one per line), typic
 
 ### Handling the Unsupported: Custom Op Packages
 
-When your model contains an operator that QNN does not recognize — a custom RoPE (Rotary Position Embedding) implementation, a non-standard activation, a specialized normalization — the converter does not compile it. It either errors out or silently routes it to CPU fallback. Neither outcome is acceptable for production.
+When your model contains an operator that QNN does not recognize â€” a custom RoPE (Rotary Position Embedding) implementation, a non-standard activation, a specialized normalization â€” the converter does not compile it. It either errors out or silently routes it to CPU fallback. Neither outcome is acceptable for production.
 
 **Custom Op Packages** are QNN's mechanism for extending the operator set. You write a Hexagon-optimized kernel for your custom op, package it, and tell the converter to use it. The op then runs on HTP like any built-in operator.
 
 **The workflow has four steps:**
 
 ```
-1. Define the Op      →  CustomOp.xml (interface specification)
-       │
-       ▼
-2. Generate Skeleton  →  qnn-op-package-generator (creates C++ template)
-       │
-       ▼
-3. Implement Kernel   →  Write HVX/HTP implementation in C++
-       │
-       ▼
-4. Register at Convert →  Pass --op_package_lib to qnn-onnx-converter
+1. Define the Op      â†’  CustomOp.xml (interface specification)
+       â”‚
+       â–¼
+2. Generate Skeleton  â†’  qnn-op-package-generator (creates C++ template)
+       â”‚
+       â–¼
+3. Implement Kernel   â†’  Write HVX/HTP implementation in C++
+       â”‚
+       â–¼
+4. Register at Convert â†’  Pass --op_package_lib to qnn-onnx-converter
 ```
 
 ---
 
 **Step 1: Define the Op (XML Specification)**
 
-Create an XML file that describes the op's interface — inputs, outputs, parameters, data types:
+Create an XML file that describes the op's interface â€” inputs, outputs, parameters, data types:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -924,7 +926,7 @@ Create an XML file that describes the op's interface — inputs, outputs, parame
 </OpDef>
 ```
 
-Note the data types: `QNN_DATATYPE_UFIXED_POINT_8` means unsigned fixed-point INT8 (quantized). Your custom op must handle quantized data natively — it receives INT8 inputs with associated scales and must produce INT8 outputs.
+Note the data types: `QNN_DATATYPE_UFIXED_POINT_8` means unsigned fixed-point INT8 (quantized). Your custom op must handle quantized data natively â€” it receives INT8 inputs with associated scales and must produce INT8 outputs.
 
 ---
 
@@ -940,14 +942,14 @@ qnn-op-package-generator \
 This produces a directory with C++ source files:
 ```
 custom_rope_package/
-├── src/
-│   ├── CustomRoPE.cpp          ← Implement your kernel HERE
-│   └── CustomRoPEPackageInterface.cpp
-├── include/
-│   └── CustomRoPE.h
-├── CMakeLists.txt
-└── config/
-    └── CustomRoPE.xml
+â”œâ”€â”€ src/
+â”‚   â”œâ”€â”€ CustomRoPE.cpp          â† Implement your kernel HERE
+â”‚   â””â”€â”€ CustomRoPEPackageInterface.cpp
+â”œâ”€â”€ include/
+â”‚   â””â”€â”€ CustomRoPE.h
+â”œâ”€â”€ CMakeLists.txt
+â””â”€â”€ config/
+    â””â”€â”€ CustomRoPE.xml
 ```
 
 ---
@@ -965,7 +967,7 @@ This is the hard part. You must write Hexagon-optimized C++ that operates on qua
 // Register the op with HTP runtime
 BEGIN_PKG_OP_DEFINITION(CustomRoPEOp, "CustomRoPE");
 
-// The actual computation — runs on HTP
+// The actual computation â€” runs on HTP
 template<typename T_In, typename T_Out>
 GraphStatus customRopeImpl(
     Tensor& out,
@@ -1014,11 +1016,11 @@ GraphStatus customRopeImpl(
 END_PKG_OP_DEFINITION(CustomRoPEOp);
 ```
 
-**Important:** This simplified version dequantizes to float internally. For production, an expert would use HVX vector intrinsics to perform the trig operations in fixed-point, avoiding float entirely. The performance difference can be 5–10×.
+**Important:** This simplified version dequantizes to float internally. For production, an expert would use HVX vector intrinsics to perform the trig operations in fixed-point, avoiding float entirely. The performance difference can be 5â€“10Ã—.
 
-**HVX vs. HTP — Choosing the Right Compute Unit for Your Kernel:**
+**HVX vs. HTP â€” Choosing the Right Compute Unit for Your Kernel:**
 
-When writing a custom op kernel, you must decide which Hexagon compute unit it targets. This is not an abstract choice — it determines performance by 10× or more:
+When writing a custom op kernel, you must decide which Hexagon compute unit it targets. This is not an abstract choice â€” it determines performance by 10Ã— or more:
 
 | Compute Unit | Best For | Instruction Style | Data Types | VTCM Access |
 |-------------|---------|-------------------|------------|-------------|
@@ -1032,7 +1034,7 @@ Most custom ops for transformers (RoPE, custom activations, specialized normaliz
 
 **Keeping Your Custom Op in VTCM (the Expert Move):**
 
-The worst thing a custom op can do is read its input from DDR, compute, and write its output back to DDR — only for the next op to read it from DDR again into VTCM. This "VTCM eviction" pattern adds 2–5μs per layer — small, but it compounds across 22 transformer layers and both forward + KV cache operations.
+The worst thing a custom op can do is read its input from DDR, compute, and write its output back to DDR â€” only for the next op to read it from DDR again into VTCM. This "VTCM eviction" pattern adds 2â€“5Î¼s per layer â€” small, but it compounds across 22 transformer layers and both forward + KV cache operations.
 
 The `QnnHtp_OptimizationUtility` API provides functions to hint that your custom op should keep its data in VTCM:
 
@@ -1052,9 +1054,9 @@ DEF_OPTIMIZATION(CustomRoPEOp,
 );
 ```
 
-When `set_vtcm_required(true)` is set, the QNN compiler ensures this op's input and output tensors reside in VTCM. If there is not enough VTCM, the compiler will tile the surrounding operations to make room — rather than spilling your op's data to DDR.
+When `set_vtcm_required(true)` is set, the QNN compiler ensures this op's input and output tensors reside in VTCM. If there is not enough VTCM, the compiler will tile the surrounding operations to make room â€” rather than spilling your op's data to DDR.
 
-When `set_allow_tcm_spill(false)` is set, the compiler will error if it cannot fit this op in VTCM, rather than silently falling back to DDR. This is the "fail loudly" approach — better to know at compile time than to discover a 10× latency penalty at runtime.
+When `set_allow_tcm_spill(false)` is set, the compiler will error if it cannot fit this op in VTCM, rather than silently falling back to DDR. This is the "fail loudly" approach â€” better to know at compile time than to discover a 10Ã— latency penalty at runtime.
 
 Build the package:
 ```bash
@@ -1086,14 +1088,14 @@ The `--op_package_config` flag provides the XML interface definition so the conv
 
 ---
 
-**⚠ The Silent Fallback Trap for Custom Ops:**
+**âš  The Silent Fallback Trap for Custom Ops:**
 
-If the custom op library is **not registered correctly** — wrong path, mismatched XML, version incompatibility — the converter may not error out. Instead, it silently marks the custom op for **CPU fallback**. The model compiles. It runs. But:
+If the custom op library is **not registered correctly** â€” wrong path, mismatched XML, version incompatibility â€” the converter may not error out. Instead, it silently marks the custom op for **CPU fallback**. The model compiles. It runs. But:
 
 1. The custom op executes on CPU instead of HTP.
-2. Data must transfer HTP → CPU → HTP around every call to this op.
+2. Data must transfer HTP â†’ CPU â†’ HTP around every call to this op.
 3. If the op is inside a transformer block that repeats 22 times (like TinyLlama), that is 22 CPU round-trips.
-4. Latency increases by 44–110ms (22 × 2–5ms per round-trip) — likely more than the entire HTP inference time.
+4. Latency increases by 44â€“110ms (22 Ã— 2â€“5ms per round-trip) â€” likely more than the entire HTP inference time.
 
 **How to catch this:** Always run with profiling after adding custom ops:
 ```bash
@@ -1113,16 +1115,16 @@ If your custom op appears as a CPU node in the profiling log, the registration f
 
 ## Qualcomm AI Hub
 
-Qualcomm AI Hub is a cloud platform that simplifies the AIMET → QNN → device pipeline. Instead of manually running each tool, AI Hub provides an API and web interface that handles compilation, quantization, profiling, and even on-device testing.
+Qualcomm AI Hub is a cloud platform that simplifies the AIMET â†’ QNN â†’ device pipeline. Instead of manually running each tool, AI Hub provides an API and web interface that handles compilation, quantization, profiling, and even on-device testing.
 
 ---
 
 ### What AI Hub Provides
 
-1. **Model compilation as a service** — upload an ONNX or PyTorch model, specify the target device, and AI Hub returns a compiled context binary.
-2. **On-device profiling** — AI Hub has a farm of real Snapdragon devices. You can profile your model's latency, memory usage, and operator-level timing without owning the hardware.
-3. **Pre-optimized model zoo** — hundreds of popular models (ResNet, MobileNet, YOLO, Whisper, Stable Diffusion, LLaMA variants) already quantized and compiled for various Snapdragon targets.
-4. **Accuracy validation** — run inference on-device and compare outputs against a reference.
+1. **Model compilation as a service** â€” upload an ONNX or PyTorch model, specify the target device, and AI Hub returns a compiled context binary.
+2. **On-device profiling** â€” AI Hub has a farm of real Snapdragon devices. You can profile your model's latency, memory usage, and operator-level timing without owning the hardware.
+3. **Pre-optimized model zoo** â€” hundreds of popular models (ResNet, MobileNet, YOLO, Whisper, Stable Diffusion, LLaMA variants) already quantized and compiled for various Snapdragon targets.
+4. **Accuracy validation** â€” run inference on-device and compare outputs against a reference.
 
 ---
 
@@ -1177,7 +1179,7 @@ print(f"Operators on CPU: {profile.cpu_operator_count}")  # Want this to be 0
 # 4. If CPU fallback exists, investigate
 if profile.cpu_operator_count > 0:
     for op in profile.cpu_operators:
-        print(f"  CPU fallback: {op.name} ({op.type}) — {op.reason}")
+        print(f"  CPU fallback: {op.name} ({op.type}) â€” {op.reason}")
 ```
 
 The key metric: **CPU operator count should be zero.** Any CPU fallback means a graph split, which means a data copy, which means latency.
@@ -1228,9 +1230,9 @@ For production deployment, you typically download the compiled binary and integr
 
 ---
 
-## QAIRT — Qualcomm AI Runtime
+## QAIRT â€” Qualcomm AI Runtime
 
-QAIRT is the on-device runtime that actually executes your compiled model. It is the last layer of the stack — the code that runs in your Android app, your embedded Linux system, or your Windows-on-Arm application.
+QAIRT is the on-device runtime that actually executes your compiled model. It is the last layer of the stack â€” the code that runs in your Android app, your embedded Linux system, or your Windows-on-Arm application.
 
 ---
 
@@ -1243,13 +1245,13 @@ QAIRT is a C/C++ library (with Java/Python bindings) that:
 - Manages memory transfers between backends
 - Handles multi-model scheduling (when multiple models share the NPU)
 
-It is the successor to SNPE (Snapdragon Neural Processing Engine), which was Qualcomm's previous runtime. SNPE is legacy — new projects should use QAIRT/QNN.
+It is the successor to SNPE (Snapdragon Neural Processing Engine), which was Qualcomm's previous runtime. SNPE is legacy â€” new projects should use QAIRT/QNN.
 
 **Key clarification for legacy users:** If you have existing SNPE workflows, the migration path is:
-- `snpe-dlc-convert` → `qnn-onnx-converter` (model conversion)
-- `snpe-net-run` → `qnn-net-run` (on-device profiling and inference)
-- `.dlc` files → `.bin` context binaries (model format)
-- SNPE runtime API → QNN/QAIRT runtime API (inference in your app)
+- `snpe-dlc-convert` â†’ `qnn-onnx-converter` (model conversion)
+- `snpe-net-run` â†’ `qnn-net-run` (on-device profiling and inference)
+- `.dlc` files â†’ `.bin` context binaries (model format)
+- SNPE runtime API â†’ QNN/QAIRT runtime API (inference in your app)
 
 The core concepts (quantized inference on HTP, encoding files, backend selection) are the same. The API surface and model format changed.
 
@@ -1264,7 +1266,7 @@ qnn-net-run \
     --output_dir ./profile
 ```
 
-The detailed profiling output shows per-operator timing, including which operators ran on HTP vs. HVX vs. CPU — critical for finding the bottleneck.
+The detailed profiling output shows per-operator timing, including which operators ran on HTP vs. HVX vs. CPU â€” critical for finding the bottleneck.
 
 ---
 
@@ -1290,30 +1292,30 @@ When you call inference in QAIRT, here is what happens:
 
 ```
 1. Load context binary
-   └─ Deserialize graph structure, weights, execution schedule
-   └─ Allocate weight buffers (VTCM or DDR)
-   └─ Create execution context
+   â””â”€ Deserialize graph structure, weights, execution schedule
+   â””â”€ Allocate weight buffers (VTCM or DDR)
+   â””â”€ Create execution context
 
 2. Set up I/O buffers
-   └─ Allocate input tensor buffers (with quantization parameters)
-   └─ Allocate output tensor buffers
+   â””â”€ Allocate input tensor buffers (with quantization parameters)
+   â””â”€ Allocate output tensor buffers
 
 3. Fill input buffer
-   └─ Your app writes input data (e.g., preprocessed image as uint8)
-   └─ If input is float32, QAIRT quantizes it using the input encoding
+   â””â”€ Your app writes input data (e.g., preprocessed image as uint8)
+   â””â”€ If input is float32, QAIRT quantizes it using the input encoding
 
 4. Execute inference
-   └─ QAIRT dispatches the graph to the backend
-   └─ On HTP: operations execute on Hexagon, intermediates stay in VTCM where possible
-   └─ On graph splits: data copies between HTP ↔ CPU (expensive!)
+   â””â”€ QAIRT dispatches the graph to the backend
+   â””â”€ On HTP: operations execute on Hexagon, intermediates stay in VTCM where possible
+   â””â”€ On graph splits: data copies between HTP â†” CPU (expensive!)
 
 5. Read output buffer
-   └─ Output is quantized INT8 (on HTP backend)
-   └─ QAIRT dequantizes to float32 using the output encoding
-   └─ Your app reads the float32 output
+   â””â”€ Output is quantized INT8 (on HTP backend)
+   â””â”€ QAIRT dequantizes to float32 using the output encoding
+   â””â”€ Your app reads the float32 output
 ```
 
-**Performance note:** Steps 1–2 happen once (at model load time). Steps 3–5 happen on every inference call. The goal is to make step 4 as fast as possible — which means keeping everything on HTP.
+**Performance note:** Steps 1â€“2 happen once (at model load time). Steps 3â€“5 happen on every inference call. The goal is to make step 4 as fast as possible â€” which means keeping everything on HTP.
 
 ---
 
@@ -1325,7 +1327,7 @@ QAIRT supports three backends, and choosing the right one matters enormously:
 - Fastest for quantized (INT8/INT16) models
 - Requires the model to be quantized
 - Requires all operators to be HTP-compatible
-- Typical speedup: 5–20× over CPU for quantized models
+- Typical speedup: 5â€“20Ã— over CPU for quantized models
 
 **GPU (Adreno):**
 - Good for FP16 models
@@ -1388,7 +1390,7 @@ val qnnManager = QnnManager(context)
 // Load compiled model
 qnnManager.loadModel("resnet50_htp.bin", QnnBackend.HTP)
 
-// Prepare input (e.g., camera frame → preprocessed tensor)
+// Prepare input (e.g., camera frame â†’ preprocessed tensor)
 val inputBuffer = preprocessImage(cameraFrame)  // Returns ByteBuffer (uint8)
 
 // Run inference
@@ -1424,7 +1426,7 @@ This section ties everything together. Here is the complete journey of a model f
 
 ### Step 1: Train in PyTorch or TensorFlow
 
-Train your model as usual. No quantization considerations needed at this stage — though designing a quantization-friendly architecture (e.g., avoiding exotic activations, preferring ReLU/ReLU6) helps later.
+Train your model as usual. No quantization considerations needed at this stage â€” though designing a quantization-friendly architecture (e.g., avoiding exotic activations, preferring ReLU/ReLU6) helps later.
 
 ```python
 model = MyModel()
@@ -1436,7 +1438,7 @@ torch.save(model.state_dict(), "model_fp32.pth")
 
 ### Step 2: Quantize with AIMET
 
-Apply the AIMET pipeline: CLE → AdaRound → (optionally) QAT.
+Apply the AIMET pipeline: CLE â†’ AdaRound â†’ (optionally) QAT.
 
 ```python
 # CLE (no data needed)
@@ -1517,10 +1519,10 @@ qnn-net-run \
 ```
 
 Check the profiling output for:
-- **Total inference time** — is it fast enough?
-- **Operator breakdown** — which ops take the most time?
-- **CPU fallbacks** — any operators running on CPU?
-- **Memory usage** — does the model fit in VTCM?
+- **Total inference time** â€” is it fast enough?
+- **Operator breakdown** â€” which ops take the most time?
+- **CPU fallbacks** â€” any operators running on CPU?
+- **Memory usage** â€” does the model fit in VTCM?
 
 If latency is too high: look at CPU fallbacks first, then consider mixed-precision (INT16 for accuracy-critical layers, INT8 for the rest), then consider architectural changes.
 
@@ -1544,11 +1546,11 @@ The full expansion:
 $$Y_q = \text{requantize}\left(\sum_i W_{q,i} \cdot X_{q,i} + b_q, \quad S_{\text{out}}, Z_{\text{out}}\right)$$
 
 where:
-- The MAC \\(\sum_i W_{q,i} \cdot X_{q,i}\\) is computed in INT8×INT8 → INT32
+- The MAC \\(\sum_i W_{q,i} \cdot X_{q,i}\\) is computed in INT8Ã—INT8 â†’ INT32
 - \\(b_q\\) is precomputed at compile time: \\(b_q = \text{round}(b_{\text{float}} / (S_w \cdot S_x)) - Z_x \sum_i W_{q,i}\\)
 - The result is **requantized** from INT32 to INT8 using the output scale \\(S_{\text{out}}\\) and zero-point \\(Z_{\text{out}}\\)
 
-The combined scale factor \\(S_{\text{combined}} = (S_w \cdot S_x) / S_{\text{out}}\\) is the only "floating-point-like" operation — and even this is implemented as a fixed-point multiply-and-shift on HTP. No floating-point unit is involved at any stage.
+The combined scale factor \\(S_{\text{combined}} = (S_w \cdot S_x) / S_{\text{out}}\\) is the only "floating-point-like" operation â€” and even this is implemented as a fixed-point multiply-and-shift on HTP. No floating-point unit is involved at any stage.
 
 **Why this matters:** When accuracy diverges between QuantSim (on your GPU) and on-device inference, the root cause is almost always this requantization step. QuantSim simulates quantization but computes in float32. The HTP computes everything in integers with fixed-point scale application. Tiny rounding differences at each requantization accumulate across layers.
 
@@ -1572,11 +1574,11 @@ Your model was trained with ImageNet normalization:
 transform = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
-    transforms.ToTensor(),          # [0, 255] → [0.0, 1.0]
+    transforms.ToTensor(),          # [0, 255] â†’ [0.0, 1.0]
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]
-    )                                # → approx [-2.1, 2.6]
+    )                                # â†’ approx [-2.1, 2.6]
 ])
 ```
 
@@ -1587,7 +1589,7 @@ The AIMET calibration saw inputs in the range \\([-2.1, 2.6]\\) and set the inpu
 
 But your on-device app feeds raw camera pixels:
 ```kotlin
-val pixels: ByteArray = camera.getFrame()  // Values: 0–255
+val pixels: ByteArray = camera.getFrame()  // Values: 0â€“255
 qnnManager.execute(pixels)  // WRONG! Expects normalized [-2.1, 2.6]
 ```
 
@@ -1597,9 +1599,9 @@ $$q = \text{round}(128 / 0.018664) + (-128) \approx 6731$$
 This overflows INT8 (max 127). The result is clamped, and every input value becomes the same clamped value. All predictions are identical.
 
 **Fix options:**
-1. **Fold preprocessing into the model** before quantization — add a `Normalize` layer as the first operation. AIMET calibrates through it, and the encodings automatically account for raw pixel input.
-2. **Match the input format** — normalize on-device before feeding to the NPU.
-3. **Recalibrate** with raw pixel inputs — change AIMET's calibration to use unnormalized inputs, so the input encoding expects [0, 255].
+1. **Fold preprocessing into the model** before quantization â€” add a `Normalize` layer as the first operation. AIMET calibrates through it, and the encodings automatically account for raw pixel input.
+2. **Match the input format** â€” normalize on-device before feeding to the NPU.
+3. **Recalibrate** with raw pixel inputs â€” change AIMET's calibration to use unnormalized inputs, so the input encoding expects [0, 255].
 
 ---
 
@@ -1609,29 +1611,29 @@ This overflows INT8 (max 127). The result is clamped, and every input value beco
 
 **Debugging checklist:**
 1. **Compare QuantSim vs. on-device outputs** for the same input. If QuantSim shows 75.5% but on-device shows 68%, the issue is in the QNN compilation or runtime, not in the quantization itself.
-2. **Check the encodings file** for outlier layers — look for `scale` values >0.1 (coarse quantization).
-3. **Try INT16 for the first and last layer** — these are often the most sensitive:
+2. **Check the encodings file** for outlier layers â€” look for `scale` values >0.1 (coarse quantization).
+3. **Try INT16 for the first and last layer** â€” these are often the most sensitive:
    ```python
    # Force first/last layer to INT16
    sim.quantizer_config('model.conv1', bitwidth=16)
    sim.quantizer_config('model.fc', bitwidth=16)
    ```
-4. **Apply CLE before re-quantizing** — if you skipped CLE, try it. It is free and often recovers 0.5–1%.
-5. **Apply AdaRound** — another 0.5–1% recovery.
-6. **QAT** — the last resort, but typically recovers the remaining gap.
+4. **Apply CLE before re-quantizing** â€” if you skipped CLE, try it. It is free and often recovers 0.5â€“1%.
+5. **Apply AdaRound** â€” another 0.5â€“1% recovery.
+6. **QAT** â€” the last resort, but typically recovers the remaining gap.
 
 ---
 
-### Scenario 3: Latency Is 10× Worse Than Expected
+### Scenario 3: Latency Is 10Ã— Worse Than Expected
 
 **Symptom:** You expected 5ms inference, but profiling shows 50ms.
 
 **Debugging checklist:**
-1. **Check for CPU fallbacks** — the #1 cause. Profile with `--profiling_level detailed` and look for operators on CPU.
-2. **Check HTP vs. HVX split** — Softmax/LayerNorm on HVX creates data transfer overhead.
-3. **Check VTCM spills** — if the compiler warning says "VTCM budget exceeded," activation tensors are spilling to DDR.
-4. **Check batch size** — batch >1 on mobile is almost always wrong. Set batch=1.
-5. **Check perf_profile** — if you are profiling in `default` or `power_saver` mode, the NPU is throttled. Use `burst` for benchmarking.
+1. **Check for CPU fallbacks** â€” the #1 cause. Profile with `--profiling_level detailed` and look for operators on CPU.
+2. **Check HTP vs. HVX split** â€” Softmax/LayerNorm on HVX creates data transfer overhead.
+3. **Check VTCM spills** â€” if the compiler warning says "VTCM budget exceeded," activation tensors are spilling to DDR.
+4. **Check batch size** â€” batch >1 on mobile is almost always wrong. Set batch=1.
+5. **Check perf_profile** â€” if you are profiling in `default` or `power_saver` mode, the NPU is throttled. Use `burst` for benchmarking.
 
 ---
 
@@ -1639,19 +1641,19 @@ This overflows INT8 (max 127). The result is clamped, and every input value beco
 
 **Critical warning:** AIMET's `QuantizationSimModel` (QuantSim) is a **mathematical simulation** of quantization. It inserts fake-quantize nodes into a PyTorch graph and runs on your GPU in float32. It simulates quantization noise but does NOT simulate:
 
-- **Latency** — QuantSim tells you nothing about how fast the model will run on HTP.
-- **Operator support** — QuantSim will happily fake-quantize a `grid_sample` operator that QNN cannot compile for HTP.
-- **CPU fallbacks** — QuantSim does not know which operators will be offloaded to CPU.
-- **HTP vs. HVX splits** — QuantSim does not model the intra-Hexagon data transfer cost.
-- **VTCM tiling** — QuantSim does not simulate memory constraints.
-- **Fixed-point requantization** — QuantSim uses float32 arithmetic; HTP uses integer arithmetic with fixed-point scale multiplication. Tiny rounding differences accumulate.
+- **Latency** â€” QuantSim tells you nothing about how fast the model will run on HTP.
+- **Operator support** â€” QuantSim will happily fake-quantize a `grid_sample` operator that QNN cannot compile for HTP.
+- **CPU fallbacks** â€” QuantSim does not know which operators will be offloaded to CPU.
+- **HTP vs. HVX splits** â€” QuantSim does not model the intra-Hexagon data transfer cost.
+- **VTCM tiling** â€” QuantSim does not simulate memory constraints.
+- **Fixed-point requantization** â€” QuantSim uses float32 arithmetic; HTP uses integer arithmetic with fixed-point scale multiplication. Tiny rounding differences accumulate.
 
 **The only way to confirm deployment-ready behavior is to run on device.** Specifically:
 1. Run `qnn-net-run` with `--backend libQnnHtp.so --profiling_level detailed` to confirm all ops are on HTP.
 2. Compare numerical outputs between QuantSim and on-device inference. Acceptable: <0.5% relative difference per output element. Red flag: >2% difference.
 3. Profile latency on the target device in `burst` mode.
 
-QuantSim is a necessary step — it catches gross quantization errors (e.g., complete accuracy collapse) early. But it is not sufficient. The "Silent Fallback" pattern (model compiles, runs, produces reasonable-looking outputs, but 3 operators are on CPU and latency is 5× worse than expected) is only caught by on-device profiling.
+QuantSim is a necessary step â€” it catches gross quantization errors (e.g., complete accuracy collapse) early. But it is not sufficient. The "Silent Fallback" pattern (model compiles, runs, produces reasonable-looking outputs, but 3 operators are on CPU and latency is 5Ã— worse than expected) is only caught by on-device profiling.
 
 ---
 
@@ -1662,18 +1664,18 @@ For deploying LLMs (TinyLlama, Phi, Mistral, LLaMA variants) on Snapdragon, here
 **Quantization scheme:**
 - [ ] Weights: **Symmetric, per-channel** (or per-group for INT4). `is_symmetric: true`, `offset: 0`.
 - [ ] Activations: **Asymmetric, per-tensor**. Use `tf_enhanced` quant scheme in AIMET.
-- [ ] KV cache: **INT8 symmetric** — cuts cache memory by 2× vs FP16, essential for long sequences.
+- [ ] KV cache: **INT8 symmetric** â€” cuts cache memory by 2Ã— vs FP16, essential for long sequences.
 
 **Preprocessing:**
-- [ ] Run **CLE first** — even though it helps less for transformers than CNNs, it is free and can help projection layers.
-- [ ] Run **SmoothQuant** (via AIMET or manual per-channel scaling) — this is the #1 technique for transformer activations with outliers.
-- [ ] Apply **AdaRound** — especially on the QKV projection and output projection weights.
+- [ ] Run **CLE first** â€” even though it helps less for transformers than CNNs, it is free and can help projection layers.
+- [ ] Run **SmoothQuant** (via AIMET or manual per-channel scaling) â€” this is the #1 technique for transformer activations with outliers.
+- [ ] Apply **AdaRound** â€” especially on the QKV projection and output projection weights.
 
 **Operator compatibility:**
-- [ ] Replace exact GELU with **approximate GELU** (`GELU(x) ≈ 0.5 * x * (1 + tanh(sqrt(2/π) * (x + 0.044715 * x³)))` — the version QNN supports).
+- [ ] Replace exact GELU with **approximate GELU** (`GELU(x) â‰ˆ 0.5 * x * (1 + tanh(sqrt(2/Ï€) * (x + 0.044715 * xÂ³)))` â€” the version QNN supports).
 - [ ] Verify **Softmax** is running on HTP (Gen 3+) or accept HVX execution (Gen 2 and below).
 - [ ] Verify **LayerNorm / RMSNorm** HTP support on your target SoC.
-- [ ] Remove any **custom ops** — they WILL fall back to CPU.
+- [ ] Remove any **custom ops** â€” they WILL fall back to CPU.
 
 **Memory:**
 - [ ] Target **batch size 1** for generation (autoregressive, memory-bound).
@@ -1691,7 +1693,7 @@ For deploying LLMs (TinyLlama, Phi, Mistral, LLaMA variants) on Snapdragon, here
 
 ## VTCM Tiling and Windowing: The Performance Cliff
 
-VTCM (Vector Tightly Coupled Memory) is the single most important hardware resource on the Hexagon NPU. Understanding how the QNN compiler uses it — and what happens when it runs out — is the difference between a model that runs at 10 tokens/sec and one that crawls at 1 token/sec.
+VTCM (Vector Tightly Coupled Memory) is the single most important hardware resource on the Hexagon NPU. Understanding how the QNN compiler uses it â€” and what happens when it runs out â€” is the difference between a model that runs at 10 tokens/sec and one that crawls at 1 token/sec.
 
 ---
 
@@ -1706,29 +1708,29 @@ If \\(M = 512\\) (sequence length), \\(K = 2048\\) (hidden dim), \\(N = 2048\\) 
 - \\(X\\): \\(512 \times 2048 \times 1\text{B} = 1\text{MB}\\)
 - \\(W\\): \\(2048 \times 2048 \times 1\text{B} = 4\text{MB}\\)
 - \\(Y\\): \\(512 \times 2048 \times 4\text{B (INT32 accumulator)} = 4\text{MB}\\)
-- **Total: 9MB** — far exceeds the 4MB VTCM on Snapdragon 8 Gen 3.
+- **Total: 9MB** â€” far exceeds the 4MB VTCM on Snapdragon 8 Gen 3.
 
 The QNN compiler must **tile** this operation. It breaks the matrices into chunks that fit in VTCM:
 
 ```
-Full matrix multiply:   X [512 × 2048] × W [2048 × 2048] = Y [512 × 2048]
+Full matrix multiply:   X [512 Ã— 2048] Ã— W [2048 Ã— 2048] = Y [512 Ã— 2048]
 
-Tiled execution (example: 128×128 tiles):
+Tiled execution (example: 128Ã—128 tiles):
 
-  For tile_m in [0, 128, 256, 384]:          ← 4 row tiles of X
-    For tile_n in [0, 128, 256, ...1920]:     ← 16 column tiles of W
-      For tile_k in [0, 128, 256, ...1920]:   ← 16 inner dim tiles
+  For tile_m in [0, 128, 256, 384]:          â† 4 row tiles of X
+    For tile_n in [0, 128, 256, ...1920]:     â† 16 column tiles of W
+      For tile_k in [0, 128, 256, ...1920]:   â† 16 inner dim tiles
         
-        1. Load X_tile [128 × 128] from DDR → VTCM     (16 KB)
-        2. Load W_tile [128 × 128] from DDR → VTCM     (16 KB)
-        3. Compute Y_tile += X_tile × W_tile in VTCM    (INT8 MAC)
+        1. Load X_tile [128 Ã— 128] from DDR â†’ VTCM     (16 KB)
+        2. Load W_tile [128 Ã— 128] from DDR â†’ VTCM     (16 KB)
+        3. Compute Y_tile += X_tile Ã— W_tile in VTCM    (INT8 MAC)
         4. (Accumulate in INT32 Y_tile in VTCM)         (64 KB)
       
-      5. Requantize Y_tile from INT32 → INT8             (16 KB)
-      6. Write Y_tile [128 × 128] from VTCM → DDR       (16 KB)
+      5. Requantize Y_tile from INT32 â†’ INT8             (16 KB)
+      6. Write Y_tile [128 Ã— 128] from VTCM â†’ DDR       (16 KB)
 
-VTCM budget per iteration: 16 + 16 + 64 = 96 KB  ✓ fits easily
-Total tiles: 4 × 16 × 16 = 1024 tile-multiply iterations
+VTCM budget per iteration: 16 + 16 + 64 = 96 KB  âœ“ fits easily
+Total tiles: 4 Ã— 16 Ã— 16 = 1024 tile-multiply iterations
 ```
 
 Each tile loads from DDR, computes in VTCM, and the result either stays in VTCM (if the next operation can consume it immediately) or writes back to DDR (if there is not enough VTCM for the next layer's tiles).
@@ -1741,24 +1743,24 @@ The difference between VTCM-resident and DDR-spilled computation is stark:
 
 | Metric | VTCM (on-chip) | DDR (off-chip) |
 |--------|----------------|----------------|
-| Bandwidth | ~200–400 GB/s | ~25–50 GB/s |
+| Bandwidth | ~200â€“400 GB/s | ~25â€“50 GB/s |
 | Latency | ~1 cycle | ~100+ cycles |
 | Energy per access | ~1 pJ | ~100 pJ |
 
-When all tile data fits in VTCM, the MAC units are always fed — compute-bound, running at peak TOPS. When tiles spill to DDR, the MAC units stall waiting for data — memory-bound, running at a fraction of peak.
+When all tile data fits in VTCM, the MAC units are always fed â€” compute-bound, running at peak TOPS. When tiles spill to DDR, the MAC units stall waiting for data â€” memory-bound, running at a fraction of peak.
 
 **Worked example: TinyLlama self-attention on Snapdragon 8 Gen 3 (4MB VTCM):**
 
 The self-attention \\(\text{Attn} = \text{Softmax}(Q K^T / \sqrt{d}) \cdot V\\) involves:
-1. \\(Q K^T\\): \\([512 \times 64] \times [64 \times 512] = [512 \times 512]\\) per head — 256KB output (INT32). **Fits in VTCM.** ✅
-2. Softmax over \\([512 \times 512]\\): 256KB. **Fits.** ✅ (but runs on HVX, not HTP)
-3. \\(\text{Attn} \times V\\): \\([512 \times 512] \times [512 \times 64] = [512 \times 64]\\) — 32KB output. **Fits.** ✅
+1. \\(Q K^T\\): \\([512 \times 64] \times [64 \times 512] = [512 \times 512]\\) per head â€” 256KB output (INT32). **Fits in VTCM.** âœ…
+2. Softmax over \\([512 \times 512]\\): 256KB. **Fits.** âœ… (but runs on HVX, not HTP)
+3. \\(\text{Attn} \times V\\): \\([512 \times 512] \times [512 \times 64] = [512 \times 64]\\) â€” 32KB output. **Fits.** âœ…
 
 Total per-head working set: ~544KB. With 32 heads, if computed sequentially per head: **544KB** at a time. Fits comfortably in 4MB VTCM.
 
 But if the compiler tries to compute all 32 heads in parallel: \\(32 \times 544\text{KB} = 17\text{MB}\\). **Does not fit.** The compiler must serialize across heads and tile within each head.
 
-**The tiling strategy the compiler chooses — sequential vs. parallel, tile size, which tensors stay in VTCM between operations — determines the DDR traffic.** The `--vtcm_mb` flag tells the compiler how much VTCM it can use. If you set it lower than the hardware provides (e.g., because another model is sharing the NPU), the compiler uses smaller tiles and generates more DDR traffic.
+**The tiling strategy the compiler chooses â€” sequential vs. parallel, tile size, which tensors stay in VTCM between operations â€” determines the DDR traffic.** The `--vtcm_mb` flag tells the compiler how much VTCM it can use. If you set it lower than the hardware provides (e.g., because another model is sharing the NPU), the compiler uses smaller tiles and generates more DDR traffic.
 
 ---
 
@@ -1766,11 +1768,11 @@ But if the compiler tries to compute all 32 heads in parallel: \\(32 \times 544\
 
 The QNN compiler is good at tiling standard operations (MatMul, Conv2d). But tiling can fail or produce poor results in several scenarios:
 
-1. **Custom ops without VTCM hints** — if your custom op does not declare its VTCM requirements (via `set_vtcm_required`), the compiler may not reserve VTCM for it. The op's inputs and outputs spill to DDR, and the surrounding tiled operations must re-load data.
+1. **Custom ops without VTCM hints** â€” if your custom op does not declare its VTCM requirements (via `set_vtcm_required`), the compiler may not reserve VTCM for it. The op's inputs and outputs spill to DDR, and the surrounding tiled operations must re-load data.
 
-2. **Large intermediate tensors that cannot be tiled** — some operations produce outputs that must be fully materialized before the next operation can consume them. Example: the full \\([512 \times 512]\\) attention matrix must exist before Softmax. If sequence length grows to 2048, this becomes \\([2048 \times 2048] \times 4\text{B} = 16\text{MB}\\) (INT32) — far exceeding VTCM. The compiler must tile Softmax itself, which is complex and often suboptimal.
+2. **Large intermediate tensors that cannot be tiled** â€” some operations produce outputs that must be fully materialized before the next operation can consume them. Example: the full \\([512 \times 512]\\) attention matrix must exist before Softmax. If sequence length grows to 2048, this becomes \\([2048 \times 2048] \times 4\text{B} = 16\text{MB}\\) (INT32) â€” far exceeding VTCM. The compiler must tile Softmax itself, which is complex and often suboptimal.
 
-3. **Non-contiguous memory access patterns** — transpose, permute, and gather operations rearrange data in memory. After a transpose, data that was contiguous (and VTCM-friendly) may now be strided across DDR. The next operation must load it in small, non-contiguous chunks — much slower than streaming contiguous blocks.
+3. **Non-contiguous memory access patterns** â€” transpose, permute, and gather operations rearrange data in memory. After a transpose, data that was contiguous (and VTCM-friendly) may now be strided across DDR. The next operation must load it in small, non-contiguous chunks â€” much slower than streaming contiguous blocks.
 
 **How to diagnose tiling problems:**
 ```bash
@@ -1787,9 +1789,9 @@ grep -i "vtcm\|spill\|tile\|ddr" compile.log
 ```
 
 Look for messages like:
-- `"VTCM budget exceeded for op X, falling back to DDR"` — direct DDR spill.
-- `"Tiling op X with tile size [M, N] due to VTCM constraint"` — tiling happening (OK if tile sizes are reasonable).
-- `"Unable to tile op X, requires full materialization"` — worst case, the compiler gave up tiling.
+- `"VTCM budget exceeded for op X, falling back to DDR"` â€” direct DDR spill.
+- `"Tiling op X with tile size [M, N] due to VTCM constraint"` â€” tiling happening (OK if tile sizes are reasonable).
+- `"Unable to tile op X, requires full materialization"` â€” worst case, the compiler gave up tiling.
 
 ---
 
@@ -1801,7 +1803,7 @@ HTP does not support truly dynamic shapes. If your model accepts variable-length
 - Compile multiple context binaries for different shapes (e.g., seq_len=64, 128, 256)
 
 **2. Unsupported operators:**
-A single unsupported op splits the graph and adds 2–5ms overhead. Common culprits: custom GELU implementations (use approximate GELU instead), grid_sample, deformable convolutions, complex indexing operations.
+A single unsupported op splits the graph and adds 2â€“5ms overhead. Common culprits: custom GELU implementations (use approximate GELU instead), grid_sample, deformable convolutions, complex indexing operations.
 
 **3. Batch normalization not folded:**
 If batch normalization layers are not folded into preceding convolutions before quantization, they appear as separate operators and waste cycles. AIMET and QNN both attempt BN folding, but custom architectures may not fold cleanly.
@@ -1809,13 +1811,13 @@ If batch normalization layers are not folded into preceding convolutions before 
 **4. Wrong quantization scheme (the bit-range waste problem):**
 Using symmetric quantization for activations that are strictly positive (post-ReLU) wastes half the INT8 range. Use asymmetric for activations. Conversely, using asymmetric for weights when symmetric would suffice adds unnecessary complexity and slower MAC paths.
 
-**Worked example — why asymmetric activations matter:**
+**Worked example â€” why asymmetric activations matter:**
 
 A ReLU output produces values in \\([0, 6.0]\\) (ReLU6). With **symmetric INT8** quantization:
 $$S = \frac{6.0}{127} = 0.0472, \quad \text{range mapped: } [-6.0, +6.0]$$
 $$\text{Usable levels for } [0, 6.0]: 128 \text{ out of } 256 \text{ (50\% wasted)}$$
 
-The 128 levels for \\([-6.0, 0)\\) are **never used** — ReLU never produces negative values. You are paying for 256 levels but only using 128.
+The 128 levels for \\([-6.0, 0)\\) are **never used** â€” ReLU never produces negative values. You are paying for 256 levels but only using 128.
 
 With **asymmetric INT8** quantization:
 $$S = \frac{6.0 - 0.0}{255} = 0.0235, \quad Z = 0$$
@@ -1824,22 +1826,22 @@ $$\text{Usable levels for } [0, 6.0]: 256 \text{ out of } 256 \text{ (0\% wasted
 Step size halved: \\(0.0235\\) vs \\(0.0472\\). **Double the resolution.** For the same 8 bits.
 
 This is why `tf_enhanced` (which uses asymmetric activations by default) is the right choice for HTP. And this is especially critical for LLM activations:
-- Post-SiLU in LLaMA/TinyLlama: values typically in \\([-0.5, 8.0]\\) — heavily skewed positive.
-- Post-Softmax in attention: values in \\([0.0, 1.0]\\) — strictly positive.
-- Post-RMSNorm: values centered near zero but not symmetric — slight asymmetry matters at INT8 precision.
+- Post-SiLU in LLaMA/TinyLlama: values typically in \\([-0.5, 8.0]\\) â€” heavily skewed positive.
+- Post-Softmax in attention: values in \\([0.0, 1.0]\\) â€” strictly positive.
+- Post-RMSNorm: values centered near zero but not symmetric â€” slight asymmetry matters at INT8 precision.
 
 For each of these, asymmetric quantization preserves more information per bit.
 
 **5. Large models exceeding VTCM (the tiling problem):**
-VTCM is the secret sauce of HTP performance, but it is small — 4MB on Snapdragon 8 Gen 3, 8MB on X Elite. If an activation tensor for a single layer exceeds the available VTCM, the HTP cannot hold the full tensor on-chip. It must **tile** the operation: compute a slice, write it to DDR, load the next slice's inputs, compute, write, repeat.
+VTCM is the secret sauce of HTP performance, but it is small â€” 4MB on Snapdragon 8 Gen 3, 8MB on X Elite. If an activation tensor for a single layer exceeds the available VTCM, the HTP cannot hold the full tensor on-chip. It must **tile** the operation: compute a slice, write it to DDR, load the next slice's inputs, compute, write, repeat.
 
 This is a critical failure pattern for LLMs on Snapdragon. Consider TinyLlama with a hidden dimension of 2048 and a sequence length of 512:
 - Activation tensor for one linear layer: \\(512 \times 2048 \times 1\ \text{byte (INT8)} = 1\text{MB}\\)
-- That fits in 4MB VTCM — fine for a single layer.
+- That fits in 4MB VTCM â€” fine for a single layer.
 - But KV cache for 22 layers at seq_len 512, 32 heads, head_dim 64: \\(2 \times 22 \times 512 \times 32 \times 64 \times 1\text{B} \approx 46\text{MB}\\)
 - The KV cache does NOT fit in VTCM. It lives in DDR.
 
-Every attention layer must read KV cache from DDR → compute attention → write back. The DDR bandwidth (typically 25–50 GB/s on mobile) becomes the bottleneck, not HTP compute. This is why **KV cache quantization** (INT8 instead of FP16) and **forced VTCM residency** for the current-token KV slice are critical for LLM inference on Snapdragon.
+Every attention layer must read KV cache from DDR â†’ compute attention â†’ write back. The DDR bandwidth (typically 25â€“50 GB/s on mobile) becomes the bottleneck, not HTP compute. This is why **KV cache quantization** (INT8 instead of FP16) and **forced VTCM residency** for the current-token KV slice are critical for LLM inference on Snapdragon.
 
 QNN provides hints for VTCM allocation:
 ```bash
@@ -1851,7 +1853,7 @@ qnn-context-binary-generator \
 ```
 
 **6. INT8 overflow in accumulation:**
-Matrix multiplication accumulates INT8 × INT8 products into an INT32 accumulator. For very large inner dimensions (e.g., 4096-wide matrix multiplies in transformers), the accumulated value can approach INT32 limits. This is rare but can cause silent numerical errors. QNN handles this automatically with intermediate requantization, but custom op implementations may not.
+Matrix multiplication accumulates INT8 Ã— INT8 products into an INT32 accumulator. For very large inner dimensions (e.g., 4096-wide matrix multiplies in transformers), the accumulated value can approach INT32 limits. This is rare but can cause silent numerical errors. QNN handles this automatically with intermediate requantization, but custom op implementations may not.
 
 **7. Input preprocessing mismatch:**
 Your model was trained with ImageNet normalization (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) applied to float32 [0, 1] inputs. On device, you are feeding uint8 [0, 255] pixels. If the input quantization encoding does not account for this normalization, every prediction will be wrong. Solution: fold the preprocessing into the model before quantization, or ensure the input encoding matches the raw pixel range.
@@ -1904,19 +1906,21 @@ htpConfig.priority = QNN_HTP_PRIORITY_HIGH;  // or NORMAL, LOW
 
 The Qualcomm quantization stack is a pipeline with two quantization paths:
 
-1. **AIMET** (the precision scalpel) quantizes your model with CLE → AdaRound → QAT and exports ONNX + encodings. This is the **production path** — non-negotiable for transformers and LLMs.
+1. **AIMET** (the precision scalpel) quantizes your model with CLE â†’ AdaRound â†’ QAT and exports ONNX + encodings. This is the **production path** â€” non-negotiable for transformers and LLMs.
 2. **QNN Native** (the black box) can quantize via `--input_list`, but has no recovery tools when accuracy drops. Acceptable only for simple CNNs.
 3. **QNN** compiles the quantized model into a hardware-specific context binary, with support for Custom Op Packages when you need unsupported operators on HTP.
-4. **QAIRT** executes the compiled binary on the Hexagon NPU. This is the current runtime — **not SNPE**, which is legacy. New projects in 2026 should use `libQnnHtp.so` via QAIRT exclusively.
-5. **AI Hub** provides a shortcut for steps 1–3 via a cloud API + pre-optimized model zoo.
+4. **QAIRT** executes the compiled binary on the Hexagon NPU. This is the current runtime â€” **not SNPE**, which is legacy. New projects in 2026 should use `libQnnHtp.so` via QAIRT exclusively.
+5. **AI Hub** provides a shortcut for steps 1â€“3 via a cloud API + pre-optimized model zoo.
 
 The critical success factors:
-- **All operators on HTP** — zero CPU fallbacks. Use `--profiling_level detailed` to verify.
-- **Per-channel symmetric weights + per-tensor asymmetric activations** — the scheme HTP's MAC hardware is designed for. Symmetric weights eliminate the runtime \\(Z_w\\) term. Asymmetric activations avoid wasting half the INT8 range on non-existent negative values.
-- **Static shapes & VTCM alignment** — HTP requires static shapes. The compiler tiles operations to fit VTCM (4–8MB). If tiles spill to DDR, throughput drops 5–10×.
-- **Custom ops registered correctly** — silent CPU fallback for unregistered ops is a 2–5ms penalty per call × N layers. Always profile to confirm.
+- **All operators on HTP** â€” zero CPU fallbacks. Use `--profiling_level detailed` to verify.
+- **Per-channel symmetric weights + per-tensor asymmetric activations** â€” the scheme HTP's MAC hardware is designed for. Symmetric weights eliminate the runtime \\(Z_w\\) term. Asymmetric activations avoid wasting half the INT8 range on non-existent negative values.
+- **Static shapes & VTCM alignment** â€” HTP requires static shapes. The compiler tiles operations to fit VTCM (4â€“8MB). If tiles spill to DDR, throughput drops 5â€“10Ã—.
+- **Custom ops registered correctly** â€” silent CPU fallback for unregistered ops is a 2â€“5ms penalty per call Ã— N layers. Always profile to confirm.
 
-This chapter is the proving ground for every transformer quantization theory in this book. The activation outlier problem (Chapter 14), the SmoothQuant fix (Chapter 15), the group-wise weight quantization (Chapter 16), the GPTQ/AWQ calibration (Chapter 17), the KV cache bottleneck (Chapter 18) — all of them manifest on Snapdragon hardware. The Qualcomm stack is not a separate topic. It is the deployment reality where theoretical quantization concepts either work or fail.
+This chapter is the proving ground for every transformer quantization theory in this book. The activation outlier problem (Chapter 14), the SmoothQuant fix (Chapter 15), the group-wise weight quantization (Chapter 16), the GPTQ/AWQ calibration (Chapter 17), the KV cache bottleneck (Chapter 18) â€” all of them manifest on Snapdragon hardware. The Qualcomm stack is not a separate topic. It is the deployment reality where theoretical quantization concepts either work or fail.
 
-When the pipeline is working correctly, INT8 models on Hexagon HTP achieve inference times that are 5–20× faster than FP32 on CPU, with accuracy within 1% of the original model. For edge deployment at scale — billions of Snapdragon devices — this stack is the path from research to production.
+When the pipeline is working correctly, INT8 models on Hexagon HTP achieve inference times that are 5â€“20Ã— faster than FP32 on CPU, with accuracy within 1% of the original model. For edge deployment at scale â€” billions of Snapdragon devices â€” this stack is the path from research to production.
+
+
 

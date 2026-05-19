@@ -1,8 +1,10 @@
-# Chapter 21: The NVIDIA Stack — From Training to Data-Center Inference
+﻿# Chapter 21: The NVIDIA Stack â€” From Training to Data-Center Inference
+
+In this chapter, we quantize weights and activations for NVIDIA compilation and serving stacks.
 
 ## Why a Dedicated Chapter on NVIDIA?
 
-If Qualcomm owns the edge, NVIDIA owns the data center. Every major cloud provider — AWS, Azure, GCP, Oracle — runs NVIDIA GPUs for AI inference. When you deploy a model to a cloud endpoint, a T4, A10, A100, L4, or H100 GPU is almost certainly behind it.
+If Qualcomm owns the edge, NVIDIA owns the data center. Every major cloud provider â€” AWS, Azure, GCP, Oracle â€” runs NVIDIA GPUs for AI inference. When you deploy a model to a cloud endpoint, a T4, A10, A100, L4, or H100 GPU is almost certainly behind it.
 
 NVIDIA's inference stack is not just "run PyTorch in production." Production inference uses **TensorRT**, a dedicated inference compiler that optimizes and quantizes models for NVIDIA Tensor Cores. For large language models, **TensorRT-LLM** extends this with transformer-specific optimizations. And **NVIDIA ModelOpt** (formerly TensorRT Model Optimizer) provides the training-side quantization and compression tools.
 
@@ -18,14 +20,14 @@ This chapter walks through every layer, from "I have a trained PyTorch model" to
 
 Before touching any NVIDIA tool, verify these prerequisites:
 
-- [ ] **GPU:** NVIDIA GPU with compute capability ≥ 7.0 (Volta or newer). Check: `nvidia-smi`
-- [ ] **Driver:** NVIDIA driver installed and supporting the CUDA version your container needs. Check: `nvidia-smi` → "CUDA Version" in top-right
+- [ ] **GPU:** NVIDIA GPU with compute capability â‰¥ 7.0 (Volta or newer). Check: `nvidia-smi`
+- [ ] **Driver:** NVIDIA driver installed and supporting the CUDA version your container needs. Check: `nvidia-smi` â†’ "CUDA Version" in top-right
 - [ ] **Docker + nvidia-container-toolkit:** GPU-enabled Docker working. Check: `docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`
 
-> **⚠ Container Toolkit version mismatch — the #1 beginner failure.** The NVIDIA Container Toolkit version must be compatible with both your host driver and the CUDA version inside the container. Symptoms of a mismatch: `docker run --gpus all` hangs, produces cryptic CDI errors, or fails silently with no GPU visible inside the container. Fix: always install the *latest* Container Toolkit (`nvidia-ctk --version` to check), ensure your host driver meets the minimum version for the container's CUDA (e.g., CUDA 12.4 containers need driver ≥ 550), and restart Docker after any toolkit upgrade (`sudo systemctl restart docker`).
+> **âš  Container Toolkit version mismatch â€” the #1 beginner failure.** The NVIDIA Container Toolkit version must be compatible with both your host driver and the CUDA version inside the container. Symptoms of a mismatch: `docker run --gpus all` hangs, produces cryptic CDI errors, or fails silently with no GPU visible inside the container. Fix: always install the *latest* Container Toolkit (`nvidia-ctk --version` to check), ensure your host driver meets the minimum version for the container's CUDA (e.g., CUDA 12.4 containers need driver â‰¥ 550), and restart Docker after any toolkit upgrade (`sudo systemctl restart docker`).
 - [ ] **NGC login:** `docker login nvcr.io` completed with your NGC API key
-- [ ] **Disk space:** ≥50 GB free (NGC containers are 10–20 GB each; engines can be several GB)
-- [ ] **Network access:** Can reach `nvcr.io` and `github.com` (or have air-gapped alternatives — see fallback in Step 1)
+- [ ] **Disk space:** â‰¥50 GB free (NGC containers are 10â€“20 GB each; engines can be several GB)
+- [ ] **Network access:** Can reach `nvcr.io` and `github.com` (or have air-gapped alternatives â€” see fallback in Step 1)
 - [ ] **HuggingFace token (LLM path only):** `export HF_TOKEN=...` set if using gated models like LLaMA
 
 ### Prerequisites Smoke Test
@@ -104,20 +106,20 @@ trtexec --onnx=resnet50.onnx --saveEngine=resnet50_fp16.plan --fp16
 # [I] Throughput: 2857.14 qps
 ```
 
-That's it — you now have a compiled TensorRT engine. The `.plan` file is a serialized binary optimized for your specific GPU.
+That's it â€” you now have a compiled TensorRT engine. The `.plan` file is a serialized binary optimized for your specific GPU.
 
-> **What you just did (ONNX → Builder → Engine → Runtime in 5 lines):**
-> 1. You exported/downloaded a model in ONNX format — a portable graph representation.
-> 2. The TensorRT **builder** read the ONNX graph and enumerated thousands of kernel implementations ("tactics" — explained in detail in the "What Are Tactics?" section below).
+> **What you just did (ONNX â†’ Builder â†’ Engine â†’ Runtime in 5 lines):**
+> 1. You exported/downloaded a model in ONNX format â€” a portable graph representation.
+> 2. The TensorRT **builder** read the ONNX graph and enumerated thousands of kernel implementations ("tactics" â€” explained in detail in the "What Are Tactics?" section below).
 > 3. The builder benchmarked each tactic on your specific GPU and selected the fastest combination.
-> 4. The builder serialized the optimized graph + selected kernels into a `.plan` file — your **engine**.
+> 4. The builder serialized the optimized graph + selected kernels into a `.plan` file â€” your **engine**.
 > 5. When you run the engine (via `trtexec --loadEngine`), the TensorRT **runtime** loads the plan and executes inference with near-zero overhead.
 >
 > This is the entire TensorRT mental model: expensive build once, cheap inference forever.
 
 ### Step 3: Upgrade to INT8
 
-> **⚠ RANDOM CALIBRATION WARNING ⚠**
+> **âš  RANDOM CALIBRATION WARNING âš **
 > The command below uses `--int8` without a calibration dataset. TensorRT will calibrate with **random data**. This is fine for benchmarking throughput, but the **outputs will be numerically wrong**. Do NOT ship a randomly-calibrated engine to production. Real calibration with representative data is covered in the "Calibration" section below.
 
 ```bash
@@ -131,19 +133,19 @@ trtexec --loadEngine=resnet50_int8.plan --batch=32 --iterations=100
 
 > **Why `--int8 --fp16` together? (Mixed-precision search space)**
 >
-> You are not telling TensorRT to use both types on every operation. You are defining the **search space** — the set of precisions the builder is *allowed* to consider per layer. Here is what happens inside:
+> You are not telling TensorRT to use both types on every operation. You are defining the **search space** â€” the set of precisions the builder is *allowed* to consider per layer. Here is what happens inside:
 >
 > 1. **Priority:** TensorRT tries INT8 first for every layer, because INT8 Tensor Core tactics offer the highest throughput.
-> 2. **Fallback:** If a layer has no INT8 kernel (e.g., LayerNorm on pre-Hopper GPUs), or the INT8 tactic is slower than FP16 for that layer's specific dimensions, the builder falls back to FP16 — not all the way to FP32.
-> 3. **Why not `--int8` alone?** Without `--fp16`, any layer that can't run in INT8 must fall back to FP32. FP32 runs on standard CUDA cores, not Tensor Cores, creating a massive bottleneck. The INT8→FP32→INT8 transitions are far more expensive than INT8→FP16→INT8 because FP16 stays on Tensor Cores.
+> 2. **Fallback:** If a layer has no INT8 kernel (e.g., LayerNorm on pre-Hopper GPUs), or the INT8 tactic is slower than FP16 for that layer's specific dimensions, the builder falls back to FP16 â€” not all the way to FP32.
+> 3. **Why not `--int8` alone?** Without `--fp16`, any layer that can't run in INT8 must fall back to FP32. FP32 runs on standard CUDA cores, not Tensor Cores, creating a massive bottleneck. The INT8â†’FP32â†’INT8 transitions are far more expensive than INT8â†’FP16â†’INT8 because FP16 stays on Tensor Cores.
 >
-> The result is a **mixed-precision engine** — the compute-heavy layers (convolutions, matrix multiplies) run in INT8, while precision-sensitive layers (residual additions, the final classifier, normalization) may run in FP16. This is not a compromise; it is the intended design. Modern NVIDIA GPUs are built for exactly this mixed-precision pattern.
+> The result is a **mixed-precision engine** â€” the compute-heavy layers (convolutions, matrix multiplies) run in INT8, while precision-sensitive layers (residual additions, the final classifier, normalization) may run in FP16. This is not a compromise; it is the intended design. Modern NVIDIA GPUs are built for exactly this mixed-precision pattern.
 >
 > **Rule:** Always pair `--int8` with `--fp16`. Using `--int8` alone is almost never what you want.
 
-> **What you should see:** INT8 throughput is 1.3–1.8× higher than FP16 on Turing/Ampere GPUs. If the speedup is less than 1.2×, your model may be memory-bandwidth-bound rather than compute-bound (see "Troubleshooting" later in this chapter).
+> **What you should see:** INT8 throughput is 1.3â€“1.8Ã— higher than FP16 on Turing/Ampere GPUs. If the speedup is less than 1.2Ã—, your model may be memory-bandwidth-bound rather than compute-bound (see "Troubleshooting" later in this chapter).
 
-> **Note:** The `--int8` flag with `trtexec` and no calibration data uses random calibration, which is fine for benchmarking throughput but will produce wrong outputs. For correct INT8 inference, you need real calibration data — covered in the "Calibration" section below.
+> **Note:** The `--int8` flag with `trtexec` and no calibration data uses random calibration, which is fine for benchmarking throughput but will produce wrong outputs. For correct INT8 inference, you need real calibration data â€” covered in the "Calibration" section below.
 
 ### Step 4: What to Do If It Fails
 
@@ -161,12 +163,12 @@ After completing the quickstart, you should have these files:
 
 ```
 /workspace/
-├── resnet50.onnx           ← Original ONNX model (exported from PyTorch or downloaded)
-├── resnet50_fp16.plan       ← Compiled TensorRT engine (FP16 precision)
-└── resnet50_int8.plan       ← Compiled TensorRT engine (INT8 precision)
+â”œâ”€â”€ resnet50.onnx           â† Original ONNX model (exported from PyTorch or downloaded)
+â”œâ”€â”€ resnet50_fp16.plan       â† Compiled TensorRT engine (FP16 precision)
+â””â”€â”€ resnet50_int8.plan       â† Compiled TensorRT engine (INT8 precision)
 ```
 
-> **File naming note:** TensorRT serialized engines use either `.plan` or `.engine` as the file extension — they are the same format. This chapter uses `.plan` consistently.
+> **File naming note:** TensorRT serialized engines use either `.plan` or `.engine` as the file extension â€” they are the same format. This chapter uses `.plan` consistently.
 
 ### Beginner Exit Criteria
 
@@ -179,35 +181,35 @@ After completing the quickstart, you should have these files:
 
 Run these three commands after the quickstart. All three must succeed before you continue:
 
-> **These commands are benchmarking, not inference.** `trtexec --loadEngine` feeds **random synthetic data** into the engine and measures throughput/latency. It does not run your real images or produce meaningful predictions. You are verifying that the engine *loads, runs, and achieves expected performance* — not that the outputs are correct. Real inference with actual data is covered in "Step 4: Validate Accuracy" in the End-to-End Pipeline section below.
+> **These commands are benchmarking, not inference.** `trtexec --loadEngine` feeds **random synthetic data** into the engine and measures throughput/latency. It does not run your real images or produce meaningful predictions. You are verifying that the engine *loads, runs, and achieves expected performance* â€” not that the outputs are correct. Real inference with actual data is covered in "Step 4: Validate Accuracy" in the End-to-End Pipeline section below.
 
 ```bash
 # 1. Engine loads and runs successfully? (synthetic data, no real input)
 trtexec --loadEngine=resnet50_fp16.plan --iterations=10
-# Expected: "[I] Throughput: ... qps" — this confirms the engine is valid and can execute
-# This is NOT running inference on real images — it is timing the engine with random tensors
+# Expected: "[I] Throughput: ... qps" â€” this confirms the engine is valid and can execute
+# This is NOT running inference on real images â€” it is timing the engine with random tensors
 
 # 2. Binding names (you will need these for Triton config.pbtxt):
 trtexec --loadEngine=resnet50_fp16.plan --verbose 2>&1 | grep -i "binding"
 # Expected: lines showing input/output tensor names, e.g.:
 # [V] Input  binding: "data", dimensions: [1,3,224,224], type: kFLOAT
 # [V] Output binding: "resnetv17_dense0_fwd", dimensions: [1,1000], type: kFLOAT
-# (Names vary by ONNX export — note them down, they must match your Triton config exactly)
+# (Names vary by ONNX export â€” note them down, they must match your Triton config exactly)
 
 # 3. Performance comparison (synthetic benchmark, not accuracy test):
 trtexec --loadEngine=resnet50_fp16.plan --batch=1 --iterations=50 --warmUp=200
 trtexec --loadEngine=resnet50_int8.plan --batch=1 --iterations=50 --warmUp=200
 # Expected: INT8 latency should be lower (or throughput higher) than FP16
-# This tells you quantization is working at the hardware level — accuracy validation comes later
+# This tells you quantization is working at the hardware level â€” accuracy validation comes later
 ```
 
 ### Toy Failure Exercise (Learn by Breaking)
 
 Beginners learn fastest by seeing a failure and fixing it. This exercise deliberately creates a broken setup so you can recognize the error message and know how to fix it.
 
-**Context:** So far, you have a `.plan` engine file — a compiled model that runs on TensorRT. But an engine file alone is not a server. To serve the engine over HTTP/gRPC (so clients can send requests), you need **Triton Inference Server**. Triton requires two things: (1) the engine file placed in a specific directory structure called a *model repository*, and (2) a `config.pbtxt` file that tells Triton the model's input/output names, data types, and dimensions. Think of `config.pbtxt` as the "wiring diagram" that connects incoming HTTP requests to the engine's actual tensor bindings.
+**Context:** So far, you have a `.plan` engine file â€” a compiled model that runs on TensorRT. But an engine file alone is not a server. To serve the engine over HTTP/gRPC (so clients can send requests), you need **Triton Inference Server**. Triton requires two things: (1) the engine file placed in a specific directory structure called a *model repository*, and (2) a `config.pbtxt` file that tells Triton the model's input/output names, data types, and dimensions. Think of `config.pbtxt` as the "wiring diagram" that connects incoming HTTP requests to the engine's actual tensor bindings.
 
-In production, you would not hand-write `config.pbtxt` from scratch — Triton can auto-generate a minimal config from the engine file (covered in "Step 5: Deploy with Triton" below). But understanding what's inside `config.pbtxt` matters, because auto-generation doesn't set dynamic batching, doesn't know your preferred batch sizes, and gets it wrong when the engine has non-standard tensor names. The most common beginner mistake? Getting the tensor names wrong. Let's see what that looks like:
+In production, you would not hand-write `config.pbtxt` from scratch â€” Triton can auto-generate a minimal config from the engine file (covered in "Step 5: Deploy with Triton" below). But understanding what's inside `config.pbtxt` matters, because auto-generation doesn't set dynamic batching, doesn't know your preferred batch sizes, and gets it wrong when the engine has non-standard tensor names. The most common beginner mistake? Getting the tensor names wrong. Let's see what that looks like:
 
 ```bash
 # 1. Set up a Triton model repository with a DELIBERATELY wrong config:
@@ -215,7 +217,7 @@ mkdir -p model_repository/resnet50_broken/1
 cp resnet50_fp16.plan model_repository/resnet50_broken/1/model.plan
 
 # This config.pbtxt tells Triton "the input tensor is called WRONG_NAME"
-# — but the engine's actual input has a different name (whatever trtexec --verbose showed you).
+# â€” but the engine's actual input has a different name (whatever trtexec --verbose showed you).
 cat > model_repository/resnet50_broken/config.pbtxt << 'EOF'
 name: "resnet50_broken"
 platform: "tensorrt_plan"
@@ -244,7 +246,7 @@ EOF
 #    you found in the verification step above (trtexec --verbose | grep binding).
 ```
 
-> **Lesson:** The tensor names in `config.pbtxt` must exactly match the engine's binding names. There is no renaming, no fuzzy matching. Get the names from `trtexec --loadEngine=... --verbose | grep binding` and copy them verbatim. You'll write a proper `config.pbtxt` when you reach "Step 5: Deploy with Triton" in the End-to-End Pipeline section — for now, you just need to know that this wiring exists and that wrong names produce the error above.
+> **Lesson:** The tensor names in `config.pbtxt` must exactly match the engine's binding names. There is no renaming, no fuzzy matching. Get the names from `trtexec --loadEngine=... --verbose | grep binding` and copy them verbatim. You'll write a proper `config.pbtxt` when you reach "Step 5: Deploy with Triton" in the End-to-End Pipeline section â€” for now, you just need to know that this wiring exists and that wrong names produce the error above.
 
 ---
 
@@ -252,19 +254,19 @@ EOF
 
 The rest of this chapter covers the NVIDIA stack in depth. Depending on your workload, you'll use different tools:
 
-**Track A — CNNs and Non-LLM Models (e.g., ResNet, YOLO, BERT-classification):**
-You will use: PyTorch → ONNX export → TensorRT (or ModelOpt + TensorRT) → Triton.
+**Track A â€” CNNs and Non-LLM Models (e.g., ResNet, YOLO, BERT-classification):**
+You will use: PyTorch â†’ ONNX export â†’ TensorRT (or ModelOpt + TensorRT) â†’ Triton.
 Start reading from "What Is the NVIDIA Stack?" and follow the TensorRT sections.
 
-**Track B — Large Language Models (e.g., LLaMA, Mistral, GPT):**
-You will use: PyTorch/HuggingFace → ModelOpt quantization → TensorRT-LLM → Triton.
+**Track B â€” Large Language Models (e.g., LLaMA, Mistral, GPT):**
+You will use: PyTorch/HuggingFace â†’ ModelOpt quantization â†’ TensorRT-LLM â†’ Triton.
 Start reading from "What Is the NVIDIA Stack?" but focus on the TensorRT-LLM and TRT-LLM Recipe Matrix sections.
 
-**Track C — "I just want the fastest path to production":**
+**Track C â€” "I just want the fastest path to production":**
 Follow these three options in order of complexity:
-- **Option A (simplest):** `trtexec --onnx=model.onnx --fp16` — FP16, no quantization, works everywhere
-- **Option B (INT8 with calibration):** `trtexec --onnx=model.onnx --int8 --fp16 --calib=calibration.cache` — needs calibration data
-- **Option C (explicit Q/DQ via ModelOpt):** ModelOpt PTQ → ONNX with Q/DQ nodes → TensorRT build — recommended for transformers and production
+- **Option A (simplest):** `trtexec --onnx=model.onnx --fp16` â€” FP16, no quantization, works everywhere
+- **Option B (INT8 with calibration):** `trtexec --onnx=model.onnx --int8 --fp16 --calib=calibration.cache` â€” needs calibration data
+- **Option C (explicit Q/DQ via ModelOpt):** ModelOpt PTQ â†’ ONNX with Q/DQ nodes â†’ TensorRT build â€” recommended for transformers and production
 
 ### Minimum Viable Pipeline (One-Page View)
 
@@ -273,55 +275,55 @@ These two diagrams show the end-to-end path for each track. Everything in this c
 **CNN / Non-LLM Path:**
 ```
  PyTorch model
-      │
-      ▼
- torch.onnx.export()         ← ONNX graph (portable)
-      │
-      ▼
- trtexec --onnx=... --int8   ← TensorRT build (GPU-specific engine)
-      │
-      ▼
+      â”‚
+      â–¼
+ torch.onnx.export()         â† ONNX graph (portable)
+      â”‚
+      â–¼
+ trtexec --onnx=... --int8   â† TensorRT build (GPU-specific engine)
+      â”‚
+      â–¼
  model_repository/model/1/model.plan
-      │
-      ▼
- tritonserver --model-repository=...   ← Triton serves HTTP/gRPC
+      â”‚
+      â–¼
+ tritonserver --model-repository=...   â† Triton serves HTTP/gRPC
 ```
 
 **LLM Path:**
 ```
  HuggingFace checkpoint
-      │
-      ▼
- ModelOpt quantize (or quantize.py)   ← PTQ: SmoothQuant / AWQ / FP8
-      │
-      ▼
- trtllm-build --checkpoint_dir=...    ← TRT-LLM engine build
-      │
-      ▼
- model_repository/llm/1/              ← engine_dir in config.pbtxt
-      │
-      ▼
- tritonserver (tensorrtllm backend)   ← Triton serves with in-flight batching
+      â”‚
+      â–¼
+ ModelOpt quantize (or quantize.py)   â† PTQ: SmoothQuant / AWQ / FP8
+      â”‚
+      â–¼
+ trtllm-build --checkpoint_dir=...    â† TRT-LLM engine build
+      â”‚
+      â–¼
+ model_repository/llm/1/              â† engine_dir in config.pbtxt
+      â”‚
+      â–¼
+ tritonserver (tensorrtllm backend)   â† Triton serves with in-flight batching
 ```
 
 > **Rule:** Every tool in this chapter fits into one of these two pipelines. If you are not sure where a section belongs, trace it back to this diagram.
 
 ---
 
-## Glossary — 10 Terms You Must Know
+## Glossary â€” 10 Terms You Must Know
 
 > **Read this box before continuing.** These terms appear on nearly every page. If you forget one, come back here.
 
 | # | Term | Definition |
 |---|------|-----------|
 | 1 | **Engine / Plan** | A serialized binary file (`.plan` or `.engine`) containing a model compiled and optimized for a specific GPU. Not portable across GPU architectures by default. |
-| 2 | **Tactic** | A specific kernel implementation for an operation. TensorRT benchmarks multiple tactics per layer and selects the fastest one for the target GPU. This concept is fundamental — see "What Are Tactics?" below for the full explanation. |
+| 2 | **Tactic** | A specific kernel implementation for an operation. TensorRT benchmarks multiple tactics per layer and selects the fastest one for the target GPU. This concept is fundamental â€” see "What Are Tactics?" below for the full explanation. |
 | 3 | **Workspace** | Temporary GPU memory that TensorRT uses during inference for intermediate computations. Larger workspace allows TensorRT to try more (potentially faster) tactics. |
-| 4 | **Optimization Profile** | A specification of min/opt/max shapes for dynamic input dimensions. TensorRT auto-tunes kernels for the `opt` shape and guarantees correctness for any shape in the min–max range. |
+| 4 | **Optimization Profile** | A specification of min/opt/max shapes for dynamic input dimensions. TensorRT auto-tunes kernels for the `opt` shape and guarantees correctness for any shape in the minâ€“max range. |
 | 5 | **Plugin** | A custom C++/CUDA extension that implements an operation not natively supported by TensorRT. Required when your model uses ops that TensorRT can't parse from ONNX. |
 | 6 | **Backend** | In Triton Inference Server, the runtime that executes a model. `tensorrt_plan` is the backend for TensorRT engines; `tensorrtllm` is the backend for TRT-LLM models. |
 | 7 | **Q/DQ Nodes** | QuantizeLinear / DequantizeLinear operations in an ONNX graph. They specify exact quantization scales, making quantization explicit and reproducible rather than relying on TensorRT's internal heuristics. |
-| 8 | **KV Cache** | Key-Value cache — stores past attention key/value pairs during LLM autoregressive generation. Grows with sequence length and can consume more memory than the model weights for long contexts. |
+| 8 | **KV Cache** | Key-Value cache â€” stores past attention key/value pairs during LLM autoregressive generation. Grows with sequence length and can consume more memory than the model weights for long contexts. |
 | 9 | **Tensor Cores** | Specialized hardware units inside each NVIDIA Streaming Multiprocessor (SM) that perform matrix multiply-accumulate on low-precision types (FP16, INT8, FP8). All quantized speedups come from Tensor Cores. |
 | 10 | **Compute Capability** | SM version (e.g., SM 8.0) that identifies the GPU architecture and determines which precision instructions (INT8 IMMA, FP8 HMMA) are available. |
 
@@ -331,80 +333,80 @@ Additional terms used in expert sections:
 |------|-----------|
 | **Builder** | The TensorRT component that compiles a model into an engine. Runs offline (build-time). |
 | **Model Repository** | A directory structure that Triton uses to discover and load models. Each model has a versioned subdirectory containing the engine file and a `config.pbtxt` configuration. |
-| **IMMA / HMMA** | Integer Matrix Multiply-Accumulate / Half-precision Matrix Multiply-Accumulate — the actual Tensor Core instruction sets for INT8 and FP16/FP8 respectively. |
-| **NCCL** | NVIDIA Collective Communications Library — handles multi-GPU communication (tensor parallelism) over NVLink or PCIe. |
+| **IMMA / HMMA** | Integer Matrix Multiply-Accumulate / Half-precision Matrix Multiply-Accumulate â€” the actual Tensor Core instruction sets for INT8 and FP16/FP8 respectively. |
+| **NCCL** | NVIDIA Collective Communications Library â€” handles multi-GPU communication (tensor parallelism) over NVLink or PCIe. |
 
-### Build-Time vs. Runtime vs. Serving — What Runs Where
+### Build-Time vs. Runtime vs. Serving â€” What Runs Where
 
 A common source of confusion is which tools run when. Here's the clear separation:
 
 ```
 BUILD-TIME (offline, on your workstation or CI):
-┌──────────────────────────────────────────────┐
-│  TensorRT Builder + calibration              │
-│  + kernel auto-tuning                        │
-│  → produces: .plan engine file               │
-│  (Takes minutes to hours. Runs once.)        │
-└──────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  TensorRT Builder + calibration              â”‚
+â”‚  + kernel auto-tuning                        â”‚
+â”‚  â†’ produces: .plan engine file               â”‚
+â”‚  (Takes minutes to hours. Runs once.)        â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
 RUNTIME (online, on the inference server):
-┌──────────────────────────────────────────────┐
-│  TensorRT Runtime loads .plan                │
-│  → executes inference on GPU                 │
-│  (Takes milliseconds per request.)           │
-└──────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  TensorRT Runtime loads .plan                â”‚
+â”‚  â†’ executes inference on GPU                 â”‚
+â”‚  (Takes milliseconds per request.)           â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
 SERVING (production infrastructure):
-┌──────────────────────────────────────────────┐
-│  Triton Inference Server                     │
-│  → hosts the TensorRT Runtime               │
-│  → handles HTTP/gRPC, batching, routing      │
-│  (Runs continuously as a service.)           │
-└──────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  Triton Inference Server                     â”‚
+â”‚  â†’ hosts the TensorRT Runtime               â”‚
+â”‚  â†’ handles HTTP/gRPC, batching, routing      â”‚
+â”‚  (Runs continuously as a service.)           â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### What Are "Tactics"? (The Core Concept)
 
-The glossary above defines a tactic as "a specific kernel implementation for an operation." That one-liner understates how central this concept is. If you understand tactics, every TensorRT behavior — slow builds, GPU-specific engines, mysterious performance regressions — makes sense. If you don't, TensorRT feels like a black box.
+The glossary above defines a tactic as "a specific kernel implementation for an operation." That one-liner understates how central this concept is. If you understand tactics, every TensorRT behavior â€” slow builds, GPU-specific engines, mysterious performance regressions â€” makes sense. If you don't, TensorRT feels like a black box.
 
-**The analogy:** Think of a high-level operation in your ONNX graph — say, a 3×3 Convolution — as a *recipe*. A tactic is a specific way the GPU *executes* that recipe. The same convolution can be computed by many different algorithms, each tuned for different hardware conditions.
+**The analogy:** Think of a high-level operation in your ONNX graph â€” say, a 3Ã—3 Convolution â€” as a *recipe*. A tactic is a specific way the GPU *executes* that recipe. The same convolution can be computed by many different algorithms, each tuned for different hardware conditions.
 
 **What varies between tactics:**
 
 | Dimension | Examples | Why It Matters |
 |-----------|----------|---------------|
-| **Algorithm** | Direct convolution, Winograd (fewer multiplications), FFT (frequency-domain), implicit GEMM | Winograd is faster for 3×3 kernels but uses more memory; FFT wins for very large kernels |
+| **Algorithm** | Direct convolution, Winograd (fewer multiplications), FFT (frequency-domain), implicit GEMM | Winograd is faster for 3Ã—3 kernels but uses more memory; FFT wins for very large kernels |
 | **Memory tiling** | How input/output data is broken into tiles to fit GPU L1/L2 cache or shared memory | Larger tiles = fewer memory round-trips but more register pressure |
-| **Precision path** | FP32 CUDA cores, FP16 Tensor Cores, INT8 Tensor Cores (IMMA) | INT8 IMMA has 2× the throughput of FP16, but requires aligned dimensions |
+| **Precision path** | FP32 CUDA cores, FP16 Tensor Cores, INT8 Tensor Cores (IMMA) | INT8 IMMA has 2Ã— the throughput of FP16, but requires aligned dimensions |
 | **Data layout** | NCHW (channel-first), NHWC (channel-last), NC/32HW32 (blocked) | Tensor Cores prefer NHWC; if two adjacent layers disagree on layout, a Reformat kernel is needed |
 
 **Why there are thousands:**
 TensorRT generates a *cross-product* of these dimensions. For a single convolutional layer:
 
 ```
-(5 algorithms) × (10 tiling strategies) × (4 block sizes) × (3 data layouts) = 600 candidate tactics
+(5 algorithms) Ã— (10 tiling strategies) Ã— (4 block sizes) Ã— (3 data layouts) = 600 candidate tactics
 ```
 
-Multiply by 50–200 layers in a typical model, and the builder is evaluating tens of thousands of kernel variants.
+Multiply by 50â€“200 layers in a typical model, and the builder is evaluating tens of thousands of kernel variants.
 
-**The "Race" — why builds are slow:**
+**The "Race" â€” why builds are slow:**
 TensorRT cannot predict which tactic will be fastest by static analysis. GPU performance is too sensitive to memory bandwidth, cache hit rates, and instruction scheduling. So TensorRT does the only reliable thing: it *literally runs every candidate* on your GPU and times them.
 
-1. **Enumerate** — query cuDNN/cuBLAS for every kernel that can compute this layer at the requested precision
-2. **Benchmark** — launch each kernel, measure microseconds (this is why you see "Timing Runner" messages during builds)
-3. **Select** — the fastest tactic wins and is hardcoded into the `.plan` file
+1. **Enumerate** â€” query cuDNN/cuBLAS for every kernel that can compute this layer at the requested precision
+2. **Benchmark** â€” launch each kernel, measure microseconds (this is why you see "Timing Runner" messages during builds)
+3. **Select** â€” the fastest tactic wins and is hardcoded into the `.plan` file
 
-This benchmarking is why an engine build can take minutes to hours — and why the result is specific to the GPU it was built on.
+This benchmarking is why an engine build can take minutes to hours â€” and why the result is specific to the GPU it was built on.
 
 **The hardware lock-in consequence:**
-The "fastest tactic" for an A100 (large L2 cache, 108 SMs) is almost certainly different from the fastest tactic for a T4 (small L2 cache, 40 SMs). This is why a `.plan` file built on one GPU architecture won't run on another — the serialized engine contains the *specific winning tactics* for the build-time GPU.
+The "fastest tactic" for an A100 (large L2 cache, 108 SMs) is almost certainly different from the fastest tactic for a T4 (small L2 cache, 40 SMs). This is why a `.plan` file built on one GPU architecture won't run on another â€” the serialized engine contains the *specific winning tactics* for the build-time GPU.
 
 **The Workspace connection:**
-The glossary defines Workspace as "temporary GPU memory for intermediate computations." Here's the tactical implication: some fast algorithms (like Winograd convolution) require large scratch buffers. If you limit `--workspace` to, say, 256 MB, TensorRT silently disqualifies every tactic that needs more than 256 MB of scratch space — potentially excluding the fastest kernels. The default workspace is usually sufficient, but if you see unexpectedly slow inference, check whether a workspace cap is filtering out the best tactics.
+The glossary defines Workspace as "temporary GPU memory for intermediate computations." Here's the tactical implication: some fast algorithms (like Winograd convolution) require large scratch buffers. If you limit `--workspace` to, say, 256 MB, TensorRT silently disqualifies every tactic that needs more than 256 MB of scratch space â€” potentially excluding the fastest kernels. The default workspace is usually sufficient, but if you see unexpectedly slow inference, check whether a workspace cap is filtering out the best tactics.
 
-> **Bottom line:** TensorRT is not a compiler in the traditional sense. It is a *search engine for GPU kernels*. The build process is an empirical search over thousands of tactics; the engine file is the serialized result of that search. Every concept in this chapter — tactic timing caches, engine non-portability, build-time vs. runtime, even why INT8 sometimes isn't faster — traces back to this one idea.
+> **Bottom line:** TensorRT is not a compiler in the traditional sense. It is a *search engine for GPU kernels*. The build process is an empirical search over thousands of tactics; the engine file is the serialized result of that search. Every concept in this chapter â€” tactic timing caches, engine non-portability, build-time vs. runtime, even why INT8 sometimes isn't faster â€” traces back to this one idea.
 
-### Where to Run What — Tool to Container Mapping
+### Where to Run What â€” Tool to Container Mapping
 
 A beginner doesn't know which tool lives where. Here is the definitive map:
 
@@ -414,8 +416,8 @@ A beginner doesn't know which tool lives where. Here is the definitive map:
 | `polygraphy` | NGC `tensorrt` container (pre-installed) | `pip install polygraphy` (but needs TRT Python bindings) |
 | `onnx-graphsurgeon` | NGC `tensorrt` container (pre-installed) | `pip install onnx-graphsurgeon` |
 | `tensorrt` (Python) | NGC `tensorrt` container (pre-installed) | `pip install tensorrt` (needs matching CUDA) |
-| `tensorrt_llm` | NGC `tritonserver:*-trtllm-*` container | `pip install tensorrt_llm` (complex deps — prefer container) |
-| `tritonclient` | **Not** in server container — install on your client machine | `pip install tritonclient[http]` or `tritonclient[grpc]` |
+| `tensorrt_llm` | NGC `tritonserver:*-trtllm-*` container | `pip install tensorrt_llm` (complex deps â€” prefer container) |
+| `tritonclient` | **Not** in server container â€” install on your client machine | `pip install tritonclient[http]` or `tritonclient[grpc]` |
 | `nsys` (Nsight Systems) | NGC `tensorrt` and `tritonserver` containers | Install from NVIDIA developer site |
 | `ncu` (Nsight Compute) | NGC `tensorrt` container | Install from NVIDIA developer site |
 | `modelopt` | Separate install | `pip install nvidia-modelopt` (needs PyTorch + CUDA) |
@@ -427,56 +429,56 @@ A beginner doesn't know which tool lives where. Here is the definitive map:
 ## What Is "The NVIDIA Stack"?
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    YOUR TRAINED MODEL                    │
-│              (PyTorch / TensorFlow / ONNX)               │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                   NVIDIA ModelOpt                        │
-│        (Training-side quantization & compression)        │
-│   • PTQ  • QAT  • Sparsity  • Distillation              │
-└────────────────────────┬────────────────────────────────┘
-                         │  Quantized model (ONNX or checkpoint)
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                     TensorRT                             │
-│            (Inference Compiler & Runtime)                 │
-│   • Layer fusion  • Kernel auto-tuning                    │
-│   • INT8/FP8 calibration  • Engine building               │
-└────────────────────────┬────────────────────────────────┘
-                         │  Serialized engine (.plan)
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│               TensorRT-LLM (for LLMs)                    │
-│        (Transformer-specific inference runtime)           │
-│   • KV cache management  • In-flight batching             │
-│   • Weight-only / SmoothQuant / FP8                       │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│               Triton Inference Server                    │
-│             (Model serving infrastructure)                │
-│   • Dynamic batching  • Multi-model  • Scaling            │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                 NVIDIA GPU Hardware                       │
-│   • Tensor Cores (INT8, FP8, FP16, TF32)                 │
-│   • cuBLAS / cuDNN (kernel libraries)                     │
-│   • HBM (High Bandwidth Memory)                          │
-└─────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    YOUR TRAINED MODEL                    â”‚
+â”‚              (PyTorch / TensorFlow / ONNX)               â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                   NVIDIA ModelOpt                        â”‚
+â”‚        (Training-side quantization & compression)        â”‚
+â”‚   â€¢ PTQ  â€¢ QAT  â€¢ Sparsity  â€¢ Distillation              â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚  Quantized model (ONNX or checkpoint)
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                     TensorRT                             â”‚
+â”‚            (Inference Compiler & Runtime)                 â”‚
+â”‚   â€¢ Layer fusion  â€¢ Kernel auto-tuning                    â”‚
+â”‚   â€¢ INT8/FP8 calibration  â€¢ Engine building               â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚  Serialized engine (.plan)
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚               TensorRT-LLM (for LLMs)                    â”‚
+â”‚        (Transformer-specific inference runtime)           â”‚
+â”‚   â€¢ KV cache management  â€¢ In-flight batching             â”‚
+â”‚   â€¢ Weight-only / SmoothQuant / FP8                       â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚               Triton Inference Server                    â”‚
+â”‚             (Model serving infrastructure)                â”‚
+â”‚   â€¢ Dynamic batching  â€¢ Multi-model  â€¢ Scaling            â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                 NVIDIA GPU Hardware                       â”‚
+â”‚   â€¢ Tensor Cores (INT8, FP8, FP16, TF32)                 â”‚
+â”‚   â€¢ cuBLAS / cuDNN (kernel libraries)                     â”‚
+â”‚   â€¢ HBM (High Bandwidth Memory)                          â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 Each layer:
-- **ModelOpt** — makes your model quantization-friendly (training-side, like AIMET for Qualcomm).
-- **TensorRT** — compiles and optimizes the model for GPU inference (like QNN for Qualcomm).
-- **TensorRT-LLM** — extends TensorRT specifically for transformer-based LLMs.
-- **Triton** — serves the compiled model in production (load balancing, batching, multi-model).
-- **cuDNN / cuBLAS** — the low-level kernel libraries that execute the actual matrix multiplications on Tensor Cores.
+- **ModelOpt** â€” makes your model quantization-friendly (training-side, like AIMET for Qualcomm).
+- **TensorRT** â€” compiles and optimizes the model for GPU inference (like QNN for Qualcomm).
+- **TensorRT-LLM** â€” extends TensorRT specifically for transformer-based LLMs.
+- **Triton** â€” serves the compiled model in production (load balancing, batching, multi-model).
+- **cuDNN / cuBLAS** â€” the low-level kernel libraries that execute the actual matrix multiplications on Tensor Cores.
 
 ---
 
@@ -486,7 +488,7 @@ Before any of the above tools work, you need a compatible base environment. This
 
 **The compatibility chain:**
 ```
-NVIDIA Driver → CUDA Toolkit → cuDNN / cuBLAS → TensorRT → TensorRT-LLM → Triton
+NVIDIA Driver â†’ CUDA Toolkit â†’ cuDNN / cuBLAS â†’ TensorRT â†’ TensorRT-LLM â†’ Triton
 ```
 
 Each component has specific version requirements. A driver that supports CUDA 12.4 may not work with a TensorRT version built against CUDA 12.6. The canonical reference is the **TensorRT Support Matrix**, which lists every supported combination of driver, CUDA, cuDNN, and OS.
@@ -508,23 +510,23 @@ docker pull nvcr.io/nvidia/tritonserver:24.05-trtllm-python-py3
 
 **Critical rule:** Build engines inside the same container image used in production. An engine built in a different CUDA/TensorRT/cuDNN combination may fail to load or produce incorrect results.
 
-> **Container Hygiene — driver compatibility:** The NVIDIA driver on the **host** machine must be equal to or newer than the CUDA version inside the container. For example, if the NGC container uses CUDA 12.4, the host driver must support CUDA ≥12.4 (driver ≥550.54). Check with `nvidia-smi` on the host — the "CUDA Version" in the top-right corner is the maximum CUDA version the driver supports. If it's lower than what the container expects, you'll get cryptic `CUDA_ERROR_NO_DEVICE` or `cudaErrorInsufficientDriver` at runtime — not at container pull time.
+> **Container Hygiene â€” driver compatibility:** The NVIDIA driver on the **host** machine must be equal to or newer than the CUDA version inside the container. For example, if the NGC container uses CUDA 12.4, the host driver must support CUDA â‰¥12.4 (driver â‰¥550.54). Check with `nvidia-smi` on the host â€” the "CUDA Version" in the top-right corner is the maximum CUDA version the driver supports. If it's lower than what the container expects, you'll get cryptic `CUDA_ERROR_NO_DEVICE` or `cudaErrorInsufficientDriver` at runtime â€” not at container pull time.
 
-> **Why not just use PyTorch?** Eager-mode PyTorch is often measurably slower than a compiled TensorRT engine at the same precision — the gap varies by model, but the causes are structural: PyTorch dispatches kernels one at a time through the Python runtime, with no cross-layer fusion, no kernel auto-tuning, and no memory layout optimization. TensorRT's compilation cost is the "tax" you pay once to eliminate this overhead permanently. For a single inference call, PyTorch is fine. For serving millions of requests, TensorRT pays for itself immediately. **Don't take this on faith — measure it on your model with `trtexec` vs. your PyTorch baseline.**
+> **Why not just use PyTorch?** Eager-mode PyTorch is often measurably slower than a compiled TensorRT engine at the same precision â€” the gap varies by model, but the causes are structural: PyTorch dispatches kernels one at a time through the Python runtime, with no cross-layer fusion, no kernel auto-tuning, and no memory layout optimization. TensorRT's compilation cost is the "tax" you pay once to eliminate this overhead permanently. For a single inference call, PyTorch is fine. For serving millions of requests, TensorRT pays for itself immediately. **Don't take this on faith â€” measure it on your model with `trtexec` vs. your PyTorch baseline.**
 
 ---
 
 ## The Hardware: Tensor Cores and Their Quantization Support
 
-> **Optional.** You do not need to understand Tensor Core internals to build and serve a TensorRT engine. If you completed the quickstart and want to get to calibration and serving, skip ahead to the **Intermediate** tier ("TensorRT — The Core Inference Engine"). Come back here when you need to understand *why* INT8 is faster or *which* GPU supports FP8.
+> **Optional.** You do not need to understand Tensor Core internals to build and serve a TensorRT engine. If you completed the quickstart and want to get to calibration and serving, skip ahead to the **Intermediate** tier ("TensorRT â€” The Core Inference Engine"). Come back here when you need to understand *why* INT8 is faster or *which* GPU supports FP8.
 
-NVIDIA GPUs execute quantized operations on **Tensor Cores** — specialized hardware units inside each Streaming Multiprocessor (SM) that perform matrix multiply-accumulate operations on low-precision data types.
+NVIDIA GPUs execute quantized operations on **Tensor Cores** â€” specialized hardware units inside each Streaming Multiprocessor (SM) that perform matrix multiply-accumulate operations on low-precision data types.
 
 Understanding what Tensor Cores support at the hardware level explains everything about why TensorRT makes the choices it does.
 
 ---
 
-### Volta, Turing, Ampere, Hopper — What Changed for Quantization
+### Volta, Turing, Ampere, Hopper â€” What Changed for Quantization
 
 Each GPU architecture generation expanded quantization support:
 
@@ -533,11 +535,11 @@ Each GPU architecture generation expanded quantization support:
 | **Volta** | V100 | 2017 | FP16 Tensor Cores | First Tensor Cores, FP16 only |
 | **Turing** | T4, RTX 2080 | 2018 | FP16 + INT8 | INT8 Tensor Cores via IMMA (DP4A) |
 | **Ampere** | A100, A10, RTX 3090 | 2020 | FP16 + INT8 + TF32 + BF16 | Structured sparsity (2:4), IMMA v2 |
-| **Ada Lovelace** | L4, L40, RTX 4090 | 2022 | FP16 + INT8 + FP8 (arch-dependent) | FP8 tensor capability advertised; TensorRT FP8 acceleration is workload + version dependent — always validate via TensorRT Support Matrix and `trtexec --fp8` on target |
+| **Ada Lovelace** | L4, L40, RTX 4090 | 2022 | FP16 + INT8 + FP8 (arch-dependent) | FP8 tensor capability advertised; TensorRT FP8 acceleration is workload + version dependent â€” always validate via TensorRT Support Matrix and `trtexec --fp8` on target |
 | **Hopper** | H100, H200 | 2023 | FP16 + INT8 + FP8 (native) | Native FP8 Tensor Cores, Transformer Engine |
 | **Blackwell** | B100, B200, GB200 | 2024 | FP16 + INT8 + FP8 + **NVFP4** | NVFP4 Tensor Cores (two-level scaling), 2nd-gen Transformer Engine |
 
-> **Pro-Tip — NVFP4 is not just "FP4":** Blackwell uses **NVFP4** (NVIDIA's Microscaling implementation), which is a two-level scaling strategy. A micro-block of 16 values shares a single E4M3 (FP8) scale factor, and there is a second-level FP32 per-tensor scale on top. The result is a "4.5-bit" representation — 4 data bits + amortized scale overhead — that achieves FP8-level accuracy at 4-bit bandwidth. This is why NVFP4 models maintain accuracy that surprises people expecting the usual INT4 degradation: the FP8 micro-scales preserve fine-grained range information that fixed-point INT4 cannot.
+> **Pro-Tip â€” NVFP4 is not just "FP4":** Blackwell uses **NVFP4** (NVIDIA's Microscaling implementation), which is a two-level scaling strategy. A micro-block of 16 values shares a single E4M3 (FP8) scale factor, and there is a second-level FP32 per-tensor scale on top. The result is a "4.5-bit" representation â€” 4 data bits + amortized scale overhead â€” that achieves FP8-level accuracy at 4-bit bandwidth. This is why NVFP4 models maintain accuracy that surprises people expecting the usual INT4 degradation: the FP8 micro-scales preserve fine-grained range information that fixed-point INT4 cannot.
 
 > **Ada Lovelace note:** Some Ada GPUs advertise FP8 tensor capability, but TensorRT FP8 enablement and acceleration is workload-dependent and varies across TensorRT releases. Always confirm via the TensorRT Support Matrix and a micro-benchmark (`trtexec --fp8`) on your specific GPU before committing to FP8 on Ada.
 
@@ -556,7 +558,7 @@ TensorRT supports the following quantized data types (as of TensorRT 10.x):
 | **FP8 E4M3** | 8 | Floating-point | Per-tensor or per-channel scaling (amax-based) | Hopper+ weights and activations |
 | **FP4 E2M1** | 4 | Floating-point | Block-wise scaling | Blackwell weight compression |
 
-**Connecting to the book's framework:** INT8/INT4 follow the scale+zero-point contract from Chapter 3. FP8/FP4 follow floating-point grids (Chapter 19) but still use scaling — the grid is logarithmic rather than uniform, but the "representational constraint" (Chapter 2) still applies.
+**Connecting to the book's framework:** INT8/INT4 follow the scale+zero-point contract from Chapter 3. FP8/FP4 follow floating-point grids (Chapter 19) but still use scaling â€” the grid is logarithmic rather than uniform, but the "representational constraint" (Chapter 2) still applies.
 
 Always check the TensorRT Support Matrix for the canonical list of what types are supported on which GPU + TensorRT version combination.
 
@@ -570,17 +572,17 @@ Just as Chapter 20 maps Snapdragon generations to capabilities, here is the NVID
 |-------------------|-------------|-------------------------------|-----------------|-------------------------|
 | SM 7.0 | Volta (V100) | FP16 HMMA | None | FP16 only; no INT8 acceleration |
 | SM 7.5 | Turing (T4) | DP4A, INT8 IMMA | None | First INT8 tensor core support |
-| SM 8.0 | Ampere (A100) | INT8 IMMA v2, TF32 | **2:4 structured sparsity** | Sparse Tensor Cores can double INT8 throughput (624→1248 TOPS on A100) |
+| SM 8.0 | Ampere (A100) | INT8 IMMA v2, TF32 | **2:4 structured sparsity** | Sparse Tensor Cores can double INT8 throughput (624â†’1248 TOPS on A100) |
 | SM 8.6 | Ampere (A10, RTX 3090) | INT8 IMMA v2 | 2:4 structured sparsity | Same as SM 8.0 but different core count |
 | SM 8.9 | Ada Lovelace (L4, L40) | INT8 IMMA, FP8 (version-dependent) | 2:4 structured sparsity | Check TensorRT Support Matrix for FP8 |
 | SM 9.0 | Hopper (H100) | FP8 HMMA, INT8 IMMA | 2:4 structured sparsity | Native FP8, Transformer Engine |
 | SM 10.0 | Blackwell (B200) | FP4, FP8 block scaling | 2:4 structured sparsity + **Microscaling (MX) formats** | FP4 tensor cores, 2nd-gen TE; MX formats enable hardware-level block-wise scaling for FP4/FP6/FP8, defining how sub-8-bit quantization scales in future architectures |
 
-> **Sparsity + Quantization compounding:** On Ampere and later, you can combine 2:4 structured sparsity with INT8 quantization. The Sparse Tensor Core skips zero-valued weights (2 out of every 4) and computes on the remaining INT8 values. The result is approximately 4× the FP16 dense throughput — 2× from INT8 precision and 2× from sparsity. ModelOpt provides the tooling to prune weights into the 2:4 pattern and then quantize.
+> **Sparsity + Quantization compounding:** On Ampere and later, you can combine 2:4 structured sparsity with INT8 quantization. The Sparse Tensor Core skips zero-valued weights (2 out of every 4) and computes on the remaining INT8 values. The result is approximately 4Ã— the FP16 dense throughput â€” 2Ã— from INT8 precision and 2Ã— from sparsity. ModelOpt provides the tooling to prune weights into the 2:4 pattern and then quantize.
 
-> **Microscaling (MX) formats on Blackwell:** The "block-wise scaling" listed for FP4 E2M1 on Blackwell is implemented via Microscaling (MX) formats — an industry standard (adopted by NVIDIA, AMD, Intel, and others) where a small block of values (e.g., 32 elements) shares a single scale factor stored at higher precision. This is the hardware-level foundation for how sub-8-bit floating-point quantization (FP4, FP6, FP8 with block scaling) will scale across future GPU generations. Think of MX as "groupwise quantization (Chapter 16) implemented in silicon."
+> **Microscaling (MX) formats on Blackwell:** The "block-wise scaling" listed for FP4 E2M1 on Blackwell is implemented via Microscaling (MX) formats â€” an industry standard (adopted by NVIDIA, AMD, Intel, and others) where a small block of values (e.g., 32 elements) shares a single scale factor stored at higher precision. This is the hardware-level foundation for how sub-8-bit floating-point quantization (FP4, FP6, FP8 with block scaling) will scale across future GPU generations. Think of MX as "groupwise quantization (Chapter 16) implemented in silicon."
 
-**Why this matters:** When TensorRT builds an engine, it selects kernels based on compute capability. An engine built for SM 9.0 uses FP8 HMMA instructions that don't exist on SM 8.0 hardware — this is the fundamental reason engines are GPU-specific.
+**Why this matters:** When TensorRT builds an engine, it selects kernels based on compute capability. An engine built for SM 9.0 uses FP8 HMMA instructions that don't exist on SM 8.0 hardware â€” this is the fundamental reason engines are GPU-specific.
 
 ---
 
@@ -590,33 +592,33 @@ Starting with Turing, NVIDIA Tensor Cores can perform INT8 matrix multiplication
 
 \\(C_{int32} = A_{int8} \times B_{int8} + C_{int32}\\)
 
-This is the same pattern as Qualcomm's HTP — multiply in low precision, accumulate in high precision to avoid overflow.
+This is the same pattern as Qualcomm's HTP â€” multiply in low precision, accumulate in high precision to avoid overflow.
 
-**Throughput advantage (peak theoretical):** On an A100, INT8 Tensor Core throughput is **2× FP16** throughput:
+**Throughput advantage (peak theoretical):** On an A100, INT8 Tensor Core throughput is **2Ã— FP16** throughput:
 - FP16: 312 TFLOPS
 - INT8: 624 TOPS
 
-This means a model quantized to INT8 can theoretically run 2× faster than FP16. In practice, the speedup is 1.3–1.8× because memory bandwidth (not compute) is often the bottleneck, and requantization between layers adds overhead.
+This means a model quantized to INT8 can theoretically run 2Ã— faster than FP16. In practice, the speedup is 1.3â€“1.8Ã— because memory bandwidth (not compute) is often the bottleneck, and requantization between layers adds overhead.
 
 > **Connecting to Chapter 16:** If your workload is memory-bound (e.g., batch-1 autoregressive LLM decode), then INT8 compute throughput doesn't matter unless you also reduce memory traffic. Weight-only quantization (W4A16, W8A16) gives you the memory bandwidth reduction without requiring activation quantization. If your workload is compute-bound (large batch CNN inference, prefill phase of LLMs), INT8 compute throughput directly translates to speedup.
 
-**Key constraint:** Tensor Cores operate on specific matrix tile sizes. For Ampere: 16×16×16 tiles. Matrix dimensions must be multiples of 16 for maximum efficiency. Non-aligned dimensions get padded, wasting some throughput. TensorRT handles this padding automatically, but an expert architect ensures matrix dimensions are multiples of 8 or 16 (depending on architecture) to avoid "dead cycles" in the Tensor Core pipeline.
+**Key constraint:** Tensor Cores operate on specific matrix tile sizes. For Ampere: 16Ã—16Ã—16 tiles. Matrix dimensions must be multiples of 16 for maximum efficiency. Non-aligned dimensions get padded, wasting some throughput. TensorRT handles this padding automatically, but an expert architect ensures matrix dimensions are multiples of 8 or 16 (depending on architecture) to avoid "dead cycles" in the Tensor Core pipeline.
 
-> **Hardware depth — Register Pressure and Occupancy:** Beyond raw TOPS, quantization helps GPUs in a subtler way. INT8 values occupy half the register space of FP16. This reduces *register pressure*, allowing the GPU scheduler to keep more warps active simultaneously (higher occupancy). Higher occupancy means better latency hiding and higher sustained throughput. This is analogous to how quantization reduces VTCM pressure on Qualcomm's HTP (Chapter 20), but expressed through the GPU's warp-based execution model.
+> **Hardware depth â€” Register Pressure and Occupancy:** Beyond raw TOPS, quantization helps GPUs in a subtler way. INT8 values occupy half the register space of FP16. This reduces *register pressure*, allowing the GPU scheduler to keep more warps active simultaneously (higher occupancy). Higher occupancy means better latency hiding and higher sustained throughput. This is analogous to how quantization reduces VTCM pressure on Qualcomm's HTP (Chapter 20), but expressed through the GPU's warp-based execution model.
 
-> **Hardware depth — The Memory Hierarchy and Why Quantization Gives More Than 2×:**
+> **Hardware depth â€” The Memory Hierarchy and Why Quantization Gives More Than 2Ã—:**
 >
-> Quantization isn't just about faster Tensor Core math — it fundamentally changes how data moves through the GPU's memory hierarchy. An NVIDIA data-center GPU has three levels of memory, each with dramatically different bandwidth:
+> Quantization isn't just about faster Tensor Core math â€” it fundamentally changes how data moves through the GPU's memory hierarchy. An NVIDIA data-center GPU has three levels of memory, each with dramatically different bandwidth:
 >
 > | Memory Level | Typical Size (A100/H100) | Bandwidth | Latency |
 > |-------------|------------------------|-----------|---------|
-> | **HBM (Global Memory)** | 40–80 GB | 2–3.4 TB/s | ~400 cycles |
-> | **L2 Cache** | 40–50 MB | ~12 TB/s | ~200 cycles |
-> | **Shared Memory / L1 (SRAM)** | 192–228 KB per SM | ~19 TB/s | ~30 cycles |
+> | **HBM (Global Memory)** | 40â€“80 GB | 2â€“3.4 TB/s | ~400 cycles |
+> | **L2 Cache** | 40â€“50 MB | ~12 TB/s | ~200 cycles |
+> | **Shared Memory / L1 (SRAM)** | 192â€“228 KB per SM | ~19 TB/s | ~30 cycles |
 >
-> **Why this matters for quantization:** When you quantize weights from FP16 to INT8, the model is half the size. A 25 MB layer that barely fits in L2 at FP16 now fits comfortably at 12.5 MB in INT8. If the FP16 version spills to HBM (2 TB/s) but the INT8 version stays in L2 (~12 TB/s), the effective bandwidth improvement is ~6×, far exceeding the theoretical 2× Tensor Core compute gain. This is why real-world INT8 speedups sometimes reach 3–5× — the compute speedup and the cache residency improvement multiply together.
+> **Why this matters for quantization:** When you quantize weights from FP16 to INT8, the model is half the size. A 25 MB layer that barely fits in L2 at FP16 now fits comfortably at 12.5 MB in INT8. If the FP16 version spills to HBM (2 TB/s) but the INT8 version stays in L2 (~12 TB/s), the effective bandwidth improvement is ~6Ã—, far exceeding the theoretical 2Ã— Tensor Core compute gain. This is why real-world INT8 speedups sometimes reach 3â€“5Ã— â€” the compute speedup and the cache residency improvement multiply together.
 >
-> **The practical implication:** For models that are borderline L2-resident (total weight size near 40–50 MB), quantization to INT8 or INT4 can produce outsized speedups that surprise engineers who only think about Tensor Core throughput. Conversely, for models that are already fully L2-resident at FP16 (small models), the speedup will be closer to the theoretical compute-only 1.3–1.8× range.
+> **The practical implication:** For models that are borderline L2-resident (total weight size near 40â€“50 MB), quantization to INT8 or INT4 can produce outsized speedups that surprise engineers who only think about Tensor Core throughput. Conversely, for models that are already fully L2-resident at FP16 (small models), the speedup will be closer to the theoretical compute-only 1.3â€“1.8Ã— range.
 
 ---
 
@@ -624,42 +626,42 @@ This means a model quantized to INT8 can theoretically run 2× faster than FP16.
 
 Hopper (H100) introduced native FP8 Tensor Cores. FP8 has two formats:
 
-- **E4M3** — 4 exponent bits, 3 mantissa bits. Range: ±448, precision: ~0.1%. Used for weights and activations in forward pass.
-- **E5M2** — 5 exponent bits, 2 mantissa bits. Range: ±57344, precision: ~0.5%. Used for gradients (wider range needed).
+- **E4M3** â€” 4 exponent bits, 3 mantissa bits. Range: Â±448, precision: ~0.1%. Used for weights and activations in forward pass.
+- **E5M2** â€” 5 exponent bits, 2 mantissa bits. Range: Â±57344, precision: ~0.5%. Used for gradients (wider range needed).
 
 **Why FP8 matters for quantization:**
 
 FP8 offers a middle ground between INT8 and FP16:
-- **More forgiving than INT8** — FP8 is a floating-point format, so it naturally handles a wider dynamic range. It avoids INT8-style zero-points and asymmetric encoding, but **scale management is still required.** Each tensor needs a scaling factor (amax-based) to place values inside the representable range, especially for E4M3 with its ±448 limit.
-- **Faster than FP16** — FP8 throughput on H100 is 2× FP16 (same as INT8).
-- **Simpler workflow than INT8** — no zero-points, no asymmetric encoding, no complex calibration histogram search. But you still need per-tensor or per-channel scaling factors, typically computed from observed amax values during a calibration pass or maintained dynamically.
+- **More forgiving than INT8** â€” FP8 is a floating-point format, so it naturally handles a wider dynamic range. It avoids INT8-style zero-points and asymmetric encoding, but **scale management is still required.** Each tensor needs a scaling factor (amax-based) to place values inside the representable range, especially for E4M3 with its Â±448 limit.
+- **Faster than FP16** â€” FP8 throughput on H100 is 2Ã— FP16 (same as INT8).
+- **Simpler workflow than INT8** â€” no zero-points, no asymmetric encoding, no complex calibration histogram search. But you still need per-tensor or per-channel scaling factors, typically computed from observed amax values during a calibration pass or maintained dynamically.
 
 **The key distinction from INT8:** INT8 quantization uses the scale+zero-point contract (Chapter 3). FP8 uses a floating-point grid but still requires scaling to avoid overflow/underflow. Think of it as: "FP8 is more forgiving than INT8, but scale management is still required."
 
-**H100 FP8 throughput (peak theoretical — SXM variant):**
+**H100 FP8 throughput (peak theoretical â€” SXM variant):**
 - FP8: 1,979 TFLOPS (dense) / 3,958 TFLOPS (sparse)
 - FP16: 990 TFLOPS (dense) / 1,979 TFLOPS (sparse)
 - INT8: 1,979 TOPS (dense) / 3,958 TOPS (sparse)
 
-> **Important:** These are marketing peak numbers and vary by SKU (SXM vs PCIe), clock speed, and whether sparsity is enabled. Peak throughput ≠ achieved throughput. Always measure achieved throughput with `trtexec` or Nsight on your actual hardware and workload.
+> **Important:** These are marketing peak numbers and vary by SKU (SXM vs PCIe), clock speed, and whether sparsity is enabled. Peak throughput â‰  achieved throughput. Always measure achieved throughput with `trtexec` or Nsight on your actual hardware and workload.
 
-FP8 and INT8 have the same peak throughput — but FP8 has a simpler quantization workflow (no zero-point, no asymmetric encoding, just scaling factors).
+FP8 and INT8 have the same peak throughput â€” but FP8 has a simpler quantization workflow (no zero-point, no asymmetric encoding, just scaling factors).
 
-**NVIDIA's Transformer Engine** automatically manages FP8 scaling during training and inference. It maintains per-tensor scaling factors (computed from amax history) and updates them dynamically, handling the tricky details of FP8 range management. During inference, TensorRT manages FP8 scaling as part of its quantization framework — the user provides or calibrates the scaling factors, and TensorRT fuses the scale operations into the compute kernels.
+**NVIDIA's Transformer Engine** automatically manages FP8 scaling during training and inference. It maintains per-tensor scaling factors (computed from amax history) and updates them dynamically, handling the tricky details of FP8 range management. During inference, TensorRT manages FP8 scaling as part of its quantization framework â€” the user provides or calibrates the scaling factors, and TensorRT fuses the scale operations into the compute kernels.
 
 ---
 
-# ── INTERMEDIATE TIER ──
+# â”€â”€ INTERMEDIATE TIER â”€â”€
 
 > **Intermediate Goals:** Correctness + reproducibility + deployability. After this tier, your INT8 accuracy is validated (Polygraphy diff gate), Triton serving works with dynamic batching, and dynamic shapes are supported with profiles.
 >
 > **Skip guidance:** If you already have a validated INT8/FP8 engine in Triton and need to optimize performance, jump to the **Advanced** tier. If you need multi-GPU, SLO tuning, or deep debugging, jump to **Expert**.
 
-## TensorRT — The Core Inference Engine
+## TensorRT â€” The Core Inference Engine
 
 TensorRT is NVIDIA's inference compiler and runtime. It takes a trained model (ONNX, PyTorch, or TensorFlow), optimizes it for a specific GPU, and produces a serialized **engine** file that runs with minimal overhead.
 
-TensorRT is to NVIDIA GPUs what QNN is to Qualcomm Hexagon — the bridge between a framework-level model and hardware-optimized execution.
+TensorRT is to NVIDIA GPUs what QNN is to Qualcomm Hexagon â€” the bridge between a framework-level model and hardware-optimized execution.
 
 ---
 
@@ -667,13 +669,13 @@ TensorRT is to NVIDIA GPUs what QNN is to Qualcomm Hexagon — the bridge betwee
 
 TensorRT performs several optimizations during the **build** phase:
 
-1. **Layer fusion** — combines multiple sequential operations into a single kernel launch. Conv + BatchNorm + ReLU → one fused kernel instead of three.
-2. **Precision calibration** — determines optimal INT8 scales for each tensor using a calibration dataset.
-3. **Kernel auto-tuning** — benchmarks multiple kernel implementations for each operation on the target GPU and selects the fastest one.
-4. **Memory optimization** — plans memory allocation to minimize peak usage and maximize data reuse.
-5. **Tensor format selection** — chooses the optimal memory layout (NCHW, NHWC, or NVIDIA's internal blocked formats) for each operation.
+1. **Layer fusion** â€” combines multiple sequential operations into a single kernel launch. Conv + BatchNorm + ReLU â†’ one fused kernel instead of three.
+2. **Precision calibration** â€” determines optimal INT8 scales for each tensor using a calibration dataset.
+3. **Kernel auto-tuning** â€” benchmarks multiple kernel implementations for each operation on the target GPU and selects the fastest one.
+4. **Memory optimization** â€” plans memory allocation to minimize peak usage and maximize data reuse.
+5. **Tensor format selection** â€” chooses the optimal memory layout (NCHW, NHWC, or NVIDIA's internal blocked formats) for each operation.
 
-The build phase is expensive — it can take minutes to hours for large models. But it runs once. The resulting engine is fast to load and fast to execute.
+The build phase is expensive â€” it can take minutes to hours for large models. But it runs once. The resulting engine is fast to load and fast to execute.
 
 ---
 
@@ -681,43 +683,43 @@ The build phase is expensive — it can take minutes to hours for large models. 
 
 ```
 Input Model (ONNX)
-       │
-       ▼
-┌──────────────────────┐
-│   Parser              │  ← Reads ONNX/UFF/Caffe, builds network definition
-└──────┬───────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│   Graph Optimization  │  ← Layer fusion, dead code elimination,
-│                       │     constant folding, tensor format selection
-└──────┬───────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│   Precision Selection │  ← Mark layers as FP32/FP16/INT8/FP8
-│   + Calibration       │     Run calibration dataset for INT8
-└──────┬───────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│   Kernel Auto-Tuning  │  ← Time multiple kernel implementations
-│   (per operation)     │     per operation, select fastest
-└──────┬───────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│   Engine Serialization│  ← Produce .plan file for deployment
-└──────────────────────┘
+       â”‚
+       â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Parser              â”‚  â† Reads ONNX/UFF/Caffe, builds network definition
+â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+       â”‚
+       â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Graph Optimization  â”‚  â† Layer fusion, dead code elimination,
+â”‚                       â”‚     constant folding, tensor format selection
+â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+       â”‚
+       â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Precision Selection â”‚  â† Mark layers as FP32/FP16/INT8/FP8
+â”‚   + Calibration       â”‚     Run calibration dataset for INT8
+â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+       â”‚
+       â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Kernel Auto-Tuning  â”‚  â† Time multiple kernel implementations
+â”‚   (per operation)     â”‚     per operation, select fastest
+â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+       â”‚
+       â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Engine Serializationâ”‚  â† Produce .plan file for deployment
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 **Key insight:** TensorRT engines are **GPU-specific by default.** An engine built on an A100 will not run on a T4. You must rebuild for each target GPU. This is because the kernel auto-tuning selects different kernels for different GPU architectures.
 
 However, TensorRT provides two mechanisms that relax this constraint:
 
-1. **Version-compatible engines** — allow an engine built with one TensorRT version to run on a newer TensorRT version (within constraints). Requires specific build flags (`--versionCompatible` in trtexec) and can increase plan file size. Note: version-compatible engines require the "trusted plan" security mechanism.
+1. **Version-compatible engines** â€” allow an engine built with one TensorRT version to run on a newer TensorRT version (within constraints). Requires specific build flags (`--versionCompatible` in trtexec) and can increase plan file size. Note: version-compatible engines require the "trusted plan" security mechanism.
 
-2. **Hardware compatibility mode** — allows an engine to run across multiple GPU architectures within the same TensorRT version, at a performance cost. TensorRT generates more generic kernels that work across architectures instead of architecture-specific optimized kernels.
+2. **Hardware compatibility mode** â€” allows an engine to run across multiple GPU architectures within the same TensorRT version, at a performance cost. TensorRT generates more generic kernels that work across architectures instead of architecture-specific optimized kernels.
 
 ```bash
 # Build a version-compatible engine
@@ -733,28 +735,28 @@ trtexec --onnx=model.onnx --saveEngine=model.plan --hardwareCompatibilityLevel=a
 
 ### Layer Fusion in TensorRT
 
-Layer fusion is TensorRT's most impactful optimization. Each kernel launch on a GPU has overhead (~5–10μs). A model with 200 layers would spend 1–2ms just on kernel launch overhead. Fusion reduces the number of kernel launches dramatically.
+Layer fusion is TensorRT's most impactful optimization. Each kernel launch on a GPU has overhead (~5â€“10Î¼s). A model with 200 layers would spend 1â€“2ms just on kernel launch overhead. Fusion reduces the number of kernel launches dramatically.
 
 **Common fusion patterns:**
 
 ```
-Conv + BatchNorm + ReLU     → Single fused kernel
-Conv + Add + ReLU           → Single fused kernel (residual connections)
-MatMul + Add (bias)         → Single fused kernel
-Shuffle + Reshape            → Eliminated (metadata-only, no compute)
+Conv + BatchNorm + ReLU     â†’ Single fused kernel
+Conv + Add + ReLU           â†’ Single fused kernel (residual connections)
+MatMul + Add (bias)         â†’ Single fused kernel
+Shuffle + Reshape            â†’ Eliminated (metadata-only, no compute)
 ```
 
 **Quantization-specific fusions:**
 ```
-Quantize + Conv + Dequantize     → INT8 Conv kernel (no explicit quant/dequant)
-DQ(W) + MatMul + DQ(X) → Q(Y)   → INT8 MatMul with fused requantization
+Quantize + Conv + Dequantize     â†’ INT8 Conv kernel (no explicit quant/dequant)
+DQ(W) + MatMul + DQ(X) â†’ Q(Y)   â†’ INT8 MatMul with fused requantization
 ```
 
-Without fusion, quantized models would need explicit quantize and dequantize operations around every layer — each requiring a kernel launch and memory read/write. TensorRT fuses these into the compute kernels themselves, so the INT8 conversion happens inside the matrix multiply kernel at zero additional cost.
+Without fusion, quantized models would need explicit quantize and dequantize operations around every layer â€” each requiring a kernel launch and memory read/write. TensorRT fuses these into the compute kernels themselves, so the INT8 conversion happens inside the matrix multiply kernel at zero additional cost.
 
 **Worked example:** ResNet-50 has ~53 layers. After TensorRT fusion:
-- FP32: ~53 kernel launches → ~20 fused kernels
-- INT8: ~53 layers + ~106 quant/dequant → ~18 fused kernels (quant/dequant absorbed)
+- FP32: ~53 kernel launches â†’ ~20 fused kernels
+- INT8: ~53 layers + ~106 quant/dequant â†’ ~18 fused kernels (quant/dequant absorbed)
 
 ---
 
@@ -762,9 +764,9 @@ Without fusion, quantized models would need explicit quantize and dequantize ope
 
 When you enable INT8 mode, TensorRT needs quantization parameters (scales) for every activation tensor. Unlike weights (which are known at build time), activations depend on the input data. This is the same calibration challenge described in Chapter 9 (Calibration and Observers), but implemented inside TensorRT's builder rather than in PyTorch.
 
-> **Cross-reference:** If your calibration data doesn't represent production inputs, the computed scales will be wrong — this is the **Calibration Mismatch** failure pattern from Chapter 13. If your model is a transformer with activation outliers, INT8 calibration may trigger **Resolution Collapse** (Chapter 14) — SmoothQuant (Chapter 15) or FP8 are the fixes.
+> **Cross-reference:** If your calibration data doesn't represent production inputs, the computed scales will be wrong â€” this is the **Calibration Mismatch** failure pattern from Chapter 13. If your model is a transformer with activation outliers, INT8 calibration may trigger **Resolution Collapse** (Chapter 14) â€” SmoothQuant (Chapter 15) or FP8 are the fixes.
 
-TensorRT solves this with **calibration**: you provide a representative dataset (typically 500–1000 samples), TensorRT runs inference in FP32, records the activation distributions, and then selects optimal quantization parameters.
+TensorRT solves this with **calibration**: you provide a representative dataset (typically 500â€“1000 samples), TensorRT runs inference in FP32, records the activation distributions, and then selects optimal quantization parameters.
 
 TensorRT provides three calibration algorithms:
 
@@ -781,7 +783,7 @@ TensorRT provides three calibration algorithms:
 
 **Why KL divergence?** KL divergence measures how much information is lost when approximating the FP32 distribution with the INT8 distribution. Minimizing it means the quantized distribution is as close as possible to the original, in an information-theoretic sense.
 
-**Trade-off:** Entropy calibration may clip outliers — it does not necessarily preserve the max value. If 0.1% of values are at 100.0 but 99.9% are below 5.0, entropy calibration might set the threshold at 8.0, clipping the outliers but preserving resolution for the bulk of values.
+**Trade-off:** Entropy calibration may clip outliers â€” it does not necessarily preserve the max value. If 0.1% of values are at 100.0 but 99.9% are below 5.0, entropy calibration might set the threshold at 8.0, clipping the outliers but preserving resolution for the bulk of values.
 
 This is the **default** calibration method in TensorRT and works well for most CNN models.
 
@@ -793,7 +795,7 @@ This is the **default** calibration method in TensorRT and works well for most C
 
 \\(S = \frac{\max(|x_{observed}|)}{127}\\)
 
-**When to use:** When outlier preservation is critical — e.g., when even the maximum activation value carries important information. This is conservative but wastes resolution if outliers are rare.
+**When to use:** When outlier preservation is critical â€” e.g., when even the maximum activation value carries important information. This is conservative but wastes resolution if outliers are rare.
 
 ---
 
@@ -811,7 +813,7 @@ This is the **default** calibration method in TensorRT and works well for most C
 |-----------|----------------------|-----|
 | **CNNs (ResNet, EfficientNet, YOLO)** | Entropy (default) | Activation distributions are smooth bell-curves; entropy finds the optimal clip point that preserves the most information |
 | **Transformers (BERT, ViT)** | MinMax or Percentile (99.99%) | Transformers have activation outliers (Chapter 14) that entropy calibration may clip too aggressively, causing accuracy collapse. MinMax preserves outliers at the cost of resolution |
-| **LLMs (LLaMA, Mistral, GPT)** | **Skip TensorRT calibrator entirely** — use ModelOpt SmoothQuant/AWQ or FP8 | LLM activation outlier channels require outlier-aware algorithms (SmoothQuant, Chapter 15). Standard TensorRT calibrators don't handle per-channel outlier migration |
+| **LLMs (LLaMA, Mistral, GPT)** | **Skip TensorRT calibrator entirely** â€” use ModelOpt SmoothQuant/AWQ or FP8 | LLM activation outlier channels require outlier-aware algorithms (SmoothQuant, Chapter 15). Standard TensorRT calibrators don't handle per-channel outlier migration |
 
 > **Rule:** For any transformer-based model, prefer explicit Q/DQ via ModelOpt over TensorRT's built-in calibrator. The built-in calibrator is designed for CNN-like smooth distributions and can produce poor scales for attention-heavy models.
 
@@ -846,7 +848,7 @@ layer.precision = trt.float16
 layer.set_output_type(0, trt.float16)
 ```
 
-This is the TensorRT equivalent of mixed-precision quantization — critical layers stay in higher precision while the bulk of computation runs in INT8.
+This is the TensorRT equivalent of mixed-precision quantization â€” critical layers stay in higher precision while the bulk of computation runs in INT8.
 
 ---
 
@@ -854,53 +856,53 @@ This is the TensorRT equivalent of mixed-precision quantization — critical lay
 
 TensorRT has two fundamentally different quantization workflows. Understanding the distinction is critical for production use:
 
-**Implicit quantization (legacy — deprecated):**
+**Implicit quantization (legacy â€” deprecated):**
 - You enable `BuilderFlag.INT8` and provide a calibrator
 - TensorRT decides which layers to quantize based on its internal heuristics
-- The ONNX model has no quantization nodes — TensorRT adds quantization internally
+- The ONNX model has no quantization nodes â€” TensorRT adds quantization internally
 - You have limited control over what gets quantized and how
 
-**Why implicit fails in practice — kernel splitting and broken vertical fusion:**
-Without Q/DQ nodes, TensorRT has to *guess* where precision boundaries lie. When it guesses wrong, the result is **kernel splitting**: TensorRT inserts a `Reformat` layer between adjacent ops because it has no explicit signal that they should fuse. This reformat layer copies and converts the tensor — adding latency and killing the speedup you expected from quantization.
+**Why implicit fails in practice â€” kernel splitting and broken vertical fusion:**
+Without Q/DQ nodes, TensorRT has to *guess* where precision boundaries lie. When it guesses wrong, the result is **kernel splitting**: TensorRT inserts a `Reformat` layer between adjacent ops because it has no explicit signal that they should fuse. This reformat layer copies and converts the tensor â€” adding latency and killing the speedup you expected from quantization.
 
-**Concrete example — vertical fusion broken by a misplaced DQ:**
+**Concrete example â€” vertical fusion broken by a misplaced DQ:**
 
-A classic TensorRT optimization is **vertical fusion**: `Conv → Bias → ReLU` collapses into a single kernel launch. Now consider what happens when implicit quantization places a precision boundary in the wrong place:
+A classic TensorRT optimization is **vertical fusion**: `Conv â†’ Bias â†’ ReLU` collapses into a single kernel launch. Now consider what happens when implicit quantization places a precision boundary in the wrong place:
 
 ```
-✅ Correct (explicit Q/DQ, vertical fusion preserved):
-  Q(input) → [Conv + Bias + ReLU]_INT8 → DQ(output)
-  ↑ One fused kernel, one launch, Tensor Core path
+âœ… Correct (explicit Q/DQ, vertical fusion preserved):
+  Q(input) â†’ [Conv + Bias + ReLU]_INT8 â†’ DQ(output)
+  â†‘ One fused kernel, one launch, Tensor Core path
 
-❌ Broken (implicit mode guessed wrong):
-  Q(input) → Conv_INT8 → Reformat(INT8→FP16) → Bias_FP16 → ReLU_FP16 → Reformat(FP16→INT8)
-  ↑ Three kernels, two reformats, vertical fusion destroyed
+âŒ Broken (implicit mode guessed wrong):
+  Q(input) â†’ Conv_INT8 â†’ Reformat(INT8â†’FP16) â†’ Bias_FP16 â†’ ReLU_FP16 â†’ Reformat(FP16â†’INT8)
+  â†‘ Three kernels, two reformats, vertical fusion destroyed
 ```
 
 The second path can be *slower than FP16* because the reformat overhead exceeds the INT8 speedup. This is the fundamental reason implicit quantization is unreliable: you cannot predict where TensorRT will place precision boundaries, and a single bad boundary can cascade through the graph.
 
-With explicit Q/DQ nodes, you control where quantization starts and stops. If you place Q before Conv and DQ after ReLU, TensorRT knows the entire `Conv → Bias → ReLU` chain is INT8 and fuses it into one Tensor Core kernel. If ModelOpt places a DQ node sub-optimally (e.g., between Conv and ReLU), you can use `onnx-graphsurgeon` to move it — see the Q/DQ Inspection Mini-Lab below.
+With explicit Q/DQ nodes, you control where quantization starts and stops. If you place Q before Conv and DQ after ReLU, TensorRT knows the entire `Conv â†’ Bias â†’ ReLU` chain is INT8 and fuses it into one Tensor Core kernel. If ModelOpt places a DQ node sub-optimally (e.g., between Conv and ReLU), you can use `onnx-graphsurgeon` to move it â€” see the Q/DQ Inspection Mini-Lab below.
 
 **Explicit quantization (recommended):**
 - The ONNX model contains explicit `QuantizeLinear` / `DequantizeLinear` (Q/DQ) nodes
 - These nodes specify the exact scale and zero-point for each quantized tensor
-- TensorRT reads the Q/DQ nodes and uses them directly — no heuristic decisions
+- TensorRT reads the Q/DQ nodes and uses them directly â€” no heuristic decisions
 - You have full control and reproducibility
 
 ```
-Implicit:  ONNX model → TensorRT calibrates → TensorRT decides quantization
-Explicit:  ONNX model + Q/DQ nodes → TensorRT uses provided scales → deterministic
+Implicit:  ONNX model â†’ TensorRT calibrates â†’ TensorRT decides quantization
+Explicit:  ONNX model + Q/DQ nodes â†’ TensorRT uses provided scales â†’ deterministic
 ```
 
 **Why explicit Q/DQ is preferred:**
-1. **Reproducibility** — the same ONNX file always produces the same quantized engine
-2. **Portability** — the Q/DQ ONNX can be consumed by other runtimes (ONNXRuntime, etc.)
-3. **Alignment with ModelOpt/QAT** — ModelOpt exports Q/DQ nodes; TRT consumes them directly
-4. **Explicit is the future** — implicit quantization is deprecated in modern TensorRT
+1. **Reproducibility** â€” the same ONNX file always produces the same quantized engine
+2. **Portability** â€” the Q/DQ ONNX can be consumed by other runtimes (ONNXRuntime, etc.)
+3. **Alignment with ModelOpt/QAT** â€” ModelOpt exports Q/DQ nodes; TRT consumes them directly
+4. **Explicit is the future** â€” implicit quantization is deprecated in modern TensorRT
 
-> **Decision box — which workflow to use:**
+> **Decision box â€” which workflow to use:**
 > - **CNN quick PTQ (legacy, still works):** TensorRT calibrator with `BuilderFlag.INT8`. Acceptable for simple CNNs where you just want fast INT8 and don't need Q/DQ portability.
-> - **Transformers / production (recommended):** Explicit Q/DQ via ModelOpt (`mtq.quantize` → `mtq.export`). This is the only path for SmoothQuant, AWQ, FP8, and any model where you need reproducible, debuggable quantization.
+> - **Transformers / production (recommended):** Explicit Q/DQ via ModelOpt (`mtq.quantize` â†’ `mtq.export`). This is the only path for SmoothQuant, AWQ, FP8, and any model where you need reproducible, debuggable quantization.
 >
 > **The principle:** Explicit quantization is a contract between the developer and the compiler: "I have verified these scales; do not move them."
 
@@ -913,7 +915,7 @@ import modelopt.torch.quantization as mtq
 model = mtq.quantize(model, mtq.INT8_DEFAULT_CFG, forward_loop=calibrate)
 mtq.export(model, "model_qdq.onnx", dummy_input)
 
-# TensorRT consumes Q/DQ ONNX — no calibrator needed
+# TensorRT consumes Q/DQ ONNX â€” no calibrator needed
 config.set_flag(trt.BuilderFlag.INT8)
 # No calibrator! Scales come from Q/DQ nodes in the ONNX
 engine = builder.build_serialized_network(network, config)
@@ -924,18 +926,18 @@ engine = builder.build_serialized_network(network, config)
 When you hear "explicit Q/DQ," you might wonder what the ONNX graph physically contains. Here is what changes. In an unquantized ONNX graph, a Conv layer looks like:
 
 ```
-weights (FP32) ──→ Conv ──→ output (FP32)
-input (FP32)  ──↗
+weights (FP32) â”€â”€â†’ Conv â”€â”€â†’ output (FP32)
+input (FP32)  â”€â”€â†—
 ```
 
 In an explicit Q/DQ ONNX graph, Q/DQ nodes wrap the quantized tensors:
 
 ```
-weights (FP32) → QuantizeLinear(scale=0.02, zp=0) → DequantizeLinear → Conv → QuantizeLinear → DequantizeLinear → output (FP32)
-input (FP32)   → QuantizeLinear(scale=0.05, zp=0) → DequantizeLinear ──↗
+weights (FP32) â†’ QuantizeLinear(scale=0.02, zp=0) â†’ DequantizeLinear â†’ Conv â†’ QuantizeLinear â†’ DequantizeLinear â†’ output (FP32)
+input (FP32)   â†’ QuantizeLinear(scale=0.05, zp=0) â†’ DequantizeLinear â”€â”€â†—
 ```
 
-Each `QuantizeLinear` node stores a `scale` and `zero_point` — these are the exact quantization parameters computed during calibration or QAT. TensorRT reads these nodes and fuses the Q/DQ operations into the Conv kernel itself, so no separate quantize/dequantize kernels run at inference time.
+Each `QuantizeLinear` node stores a `scale` and `zero_point` â€” these are the exact quantization parameters computed during calibration or QAT. TensorRT reads these nodes and fuses the Q/DQ operations into the Conv kernel itself, so no separate quantize/dequantize kernels run at inference time.
 
 **Inspecting Q/DQ nodes with onnx-graphsurgeon:**
 
@@ -980,7 +982,7 @@ graph.cleanup().toposort()
 onnx.save(gs.export_onnx(graph), "model_with_qdq.onnx")
 ```
 
-> **The mental model:** Q/DQ nodes are the "explicit contract" between your quantization tool (ModelOpt, QAT, GPTQ) and TensorRT. Without them, TensorRT has to *guess* where and how to quantize (implicit mode). With them, TensorRT follows your *instructions* exactly. This is why explicit Q/DQ is portable and reproducible — the quantization decisions travel with the ONNX file, not hidden inside a TensorRT calibration cache.
+> **The mental model:** Q/DQ nodes are the "explicit contract" between your quantization tool (ModelOpt, QAT, GPTQ) and TensorRT. Without them, TensorRT has to *guess* where and how to quantize (implicit mode). With them, TensorRT follows your *instructions* exactly. This is why explicit Q/DQ is portable and reproducible â€” the quantization decisions travel with the ONNX file, not hidden inside a TensorRT calibration cache.
 
 ### Q/DQ Inspection Mini-Lab (Intermediate)
 
@@ -999,19 +1001,19 @@ for node in qdq_nodes[:10]:  # first 10
     print(f"  {node.name}: scale={scale_val}")
 ```
 
-**What's suspicious — red flag thresholds:**
+**What's suspicious â€” red flag thresholds:**
 
 | Scale Value | What It Means | Action |
 |------------|---------------|--------|
-| `0.0` | Zero scale — quantization will map everything to zero | Bug in calibration. Re-run with more representative data |
+| `0.0` | Zero scale â€” quantization will map everything to zero | Bug in calibration. Re-run with more representative data |
 | `NaN` or `inf` | Numerical overflow during calibration | Check for exploding activations in the model; normalize inputs |
-| `< 1e-10` | Extremely tiny scale — values are near-zero, wasting all quantization bins | Layer may not need quantization; consider keeping in FP16 |
-| `> 100` | Very large scale — activations have extreme outliers | Classic outlier issue (Chapter 14). Apply SmoothQuant (Chapter 15) |
+| `< 1e-10` | Extremely tiny scale â€” values are near-zero, wasting all quantization bins | Layer may not need quantization; consider keeping in FP16 |
+| `> 100` | Very large scale â€” activations have extreme outliers | Classic outlier issue (Chapter 14). Apply SmoothQuant (Chapter 15) |
 | All scales identical | Calibration data was constant or calibrator didn't run | Check that calibration loop actually processes diverse inputs |
 
 ---
 
-### Silent Precision Fallback — The NVIDIA Equivalent of CPU Fallback
+### Silent Precision Fallback â€” The NVIDIA Equivalent of CPU Fallback
 
 Just as Qualcomm can silently fall back from HTP to CPU (Chapter 20), NVIDIA can silently fall back from INT8 to FP16. If TensorRT's builder determines that the INT8 kernel for a specific layer is slower or unsupported, it silently selects the FP16 kernel instead.
 
@@ -1112,7 +1114,7 @@ config.int8_calibrator = EntropyCalibrator(
 )
 ```
 
-> **You must provide: `calibration_loader`** — a Python iterator that yields NumPy arrays of shape `(batch_size, C, H, W)` with dtype `float32`, preprocessed identically to your training data. A minimal example:
+> **You must provide: `calibration_loader`** â€” a Python iterator that yields NumPy arrays of shape `(batch_size, C, H, W)` with dtype `float32`, preprocessed identically to your training data. A minimal example:
 > ```python
 > import torchvision.transforms as T
 > from torch.utils.data import DataLoader
@@ -1122,21 +1124,21 @@ config.int8_calibrator = EntropyCalibrator(
 > calibration_loader = DataLoader(dataset, batch_size=32, shuffle=False)
 > # Then wrap: calibration_loader = (batch[0].numpy() for batch in calibration_loader)
 > ```
-> **Common calibration failures:** shape mismatch (dataloader yields wrong batch size), non-contiguous arrays (fix with `np.ascontiguousarray`), wrong dtype (must be `float32` even for INT8 calibration), preprocessing that differs from training (different normalization = bad scales → Calibration Mismatch, Chapter 13).
+> **Common calibration failures:** shape mismatch (dataloader yields wrong batch size), non-contiguous arrays (fix with `np.ascontiguousarray`), wrong dtype (must be `float32` even for INT8 calibration), preprocessing that differs from training (different normalization = bad scales â†’ Calibration Mismatch, Chapter 13).
 
 ### Minimal Working Calibration Dataset (Beginner-Friendly)
 
 If you don't have a calibration dataset ready, here is a self-contained example that works inside the NGC TensorRT container with no extra downloads:
 
 ```python
-# Minimal calibration dataset — works inside NGC tensorrt container
+# Minimal calibration dataset â€” works inside NGC tensorrt container
 # Dependencies: numpy (pre-installed), torch + torchvision (pre-installed in NGC)
 import numpy as np
 import torch
 import torchvision.transforms as T
 from torchvision.datasets import FakeData  # built-in, no download needed
 
-# Option A: Synthetic data (for testing the pipeline — NOT for production accuracy)
+# Option A: Synthetic data (for testing the pipeline â€” NOT for production accuracy)
 def make_synthetic_calibration_loader(batch_size=32, num_batches=50):
     """Yields numpy float32 batches of shape (batch_size, 3, 224, 224)."""
     transform = T.Compose([T.Resize(256), T.CenterCrop(224), T.ToTensor(),
@@ -1163,7 +1165,7 @@ calibration_loader = make_synthetic_calibration_loader(batch_size=32, num_batche
 # config.int8_calibrator = EntropyCalibrator(calibration_loader, input_shape=(32, 3, 224, 224))
 ```
 
-> **Warning:** Synthetic data produces valid calibration scales for pipeline testing but NOT production-quality scales. For deployment, replace with 500–1000 representative images from your production dataset.
+> **Warning:** Synthetic data produces valid calibration scales for pipeline testing but NOT production-quality scales. For deployment, replace with 500â€“1000 representative images from your production dataset.
 
 ```python
 # 5. Build engine (this is the slow step - kernel auto-tuning)
@@ -1174,9 +1176,9 @@ with open("resnet50_int8.plan", "wb") as f:
     f.write(engine_bytes)
 ```
 
-**Build time:** For ResNet-50, expect 2–10 minutes depending on the GPU. For large models, expect 30–60 minutes. The auto-tuning step benchmarks many kernel variants.
+**Build time:** For ResNet-50, expect 2â€“10 minutes depending on the GPU. For large models, expect 30â€“60 minutes. The auto-tuning step benchmarks many kernel variants.
 
-**Calibration cache:** The calibrator saves computed scales to a cache file. On subsequent builds, the cache is reused — so calibration data is only needed once.
+**Calibration cache:** The calibrator saves computed scales to a cache file. On subsequent builds, the cache is reused â€” so calibration data is only needed once.
 
 ---
 
@@ -1190,7 +1192,7 @@ Once built, the engine is a binary blob that contains:
 
 **Loading and running an engine:**
 
-> **You must provide:** A `preprocess()` function that applies the same normalization, resize, and channel ordering used during training (e.g., ImageNet mean/std normalization, RGB channel order, resize to 224×224). A `softmax()` function (e.g., `scipy.special.softmax` or a simple NumPy implementation). These are model-specific and cannot be generated by TensorRT.
+> **You must provide:** A `preprocess()` function that applies the same normalization, resize, and channel ordering used during training (e.g., ImageNet mean/std normalization, RGB channel order, resize to 224Ã—224). A `softmax()` function (e.g., `scipy.special.softmax` or a simple NumPy implementation). These are model-specific and cannot be generated by TensorRT.
 
 ```python
 import tensorrt as trt
@@ -1220,7 +1222,7 @@ d_input = cuda.mem_alloc(int(np.prod(input_shape) * np.float32().nbytes))
 d_output = cuda.mem_alloc(int(np.prod(output_shape) * np.float32().nbytes))
 h_output = np.empty(output_shape, dtype=np.float32)
 
-# Prepare input — preprocess() must match your training pipeline exactly
+# Prepare input â€” preprocess() must match your training pipeline exactly
 # Example: input_data = (resize_and_crop(image) - mean) / std
 input_data = np.ascontiguousarray(preprocess(image).astype(np.float32))
 cuda.memcpy_htod(d_input, input_data)
@@ -1242,13 +1244,13 @@ predictions = np.exp(h_output) / np.sum(np.exp(h_output), axis=-1, keepdims=True
 
 > **Why binding resolution matters:** If your model has multiple inputs (e.g., `input_ids` + `attention_mask`) or multiple outputs, assuming input=binding 0 and output=binding 1 will silently produce wrong results. Always resolve by name using `engine.get_binding_index("name")`.
 
-> **Common beginner trap:** The input and output tensor names in your Triton `config.pbtxt` must exactly match the binding names in the engine. You cannot rename them in the config — they are baked into the engine at build time. To find the names, use: `trtexec --loadEngine=model.plan --verbose 2>&1 | grep "Binding"`.
+> **Common beginner trap:** The input and output tensor names in your Triton `config.pbtxt` must exactly match the binding names in the engine. You cannot rename them in the config â€” they are baked into the engine at build time. To find the names, use: `trtexec --loadEngine=model.plan --verbose 2>&1 | grep "Binding"`.
 
-**Note:** The input to a TensorRT INT8 engine is typically **float32**. TensorRT handles the quantization internally — the first operation in the engine quantizes the input, all internal operations run in INT8, and the last operation dequantizes the output. You do not need to manually quantize/dequantize.
+**Note:** The input to a TensorRT INT8 engine is typically **float32**. TensorRT handles the quantization internally â€” the first operation in the engine quantizes the input, all internal operations run in INT8, and the last operation dequantizes the output. You do not need to manually quantize/dequantize.
 
 ---
 
-## TensorRT-LLM — Quantization for Large Language Models
+## TensorRT-LLM â€” Quantization for Large Language Models
 
 Standard TensorRT was designed for CNN-style models: fixed input/output shapes, relatively small models, batch inference. LLMs are a fundamentally different workload.
 
@@ -1258,15 +1260,15 @@ Standard TensorRT was designed for CNN-style models: fixed input/output shapes, 
 
 LLMs have properties that break the standard TensorRT workflow:
 
-1. **Autoregressive generation** — the model runs token-by-token, with each forward pass producing one token. The output of step \\(t\\) is the input to step \\(t+1\\). Standard TensorRT expects a single forward pass with fixed shapes.
+1. **Autoregressive generation** â€” the model runs token-by-token, with each forward pass producing one token. The output of step \\(t\\) is the input to step \\(t+1\\). Standard TensorRT expects a single forward pass with fixed shapes.
 
-2. **KV cache** — past key-value pairs must be stored and grown across generation steps. This is a large, dynamically growing memory allocation that standard TensorRT does not manage.
+2. **KV cache** â€” past key-value pairs must be stored and grown across generation steps. This is a large, dynamically growing memory allocation that standard TensorRT does not manage.
 
-3. **Variable sequence lengths** — different requests have different prompt lengths and generation lengths. Batching requests with different lengths requires padding or more sophisticated scheduling.
+3. **Variable sequence lengths** â€” different requests have different prompt lengths and generation lengths. Batching requests with different lengths requires padding or more sophisticated scheduling.
 
-4. **Model size** — LLMs are 7B to 70B+ parameters. At FP16, a 70B model requires 140GB of GPU memory — more than a single GPU. Tensor parallelism (splitting the model across GPUs) is required but standard TensorRT does not support it.
+4. **Model size** â€” LLMs are 7B to 70B+ parameters. At FP16, a 70B model requires 140GB of GPU memory â€” more than a single GPU. Tensor parallelism (splitting the model across GPUs) is required but standard TensorRT does not support it.
 
-5. **Memory bandwidth bottleneck** — autoregressive generation is memory-bound (each step reads the entire weight matrix for a tiny compute), making weight quantization extremely impactful for throughput.
+5. **Memory bandwidth bottleneck** â€” autoregressive generation is memory-bound (each step reads the entire weight matrix for a tiny compute), making weight quantization extremely impactful for throughput.
 
 TensorRT-LLM addresses all of these.
 
@@ -1281,29 +1283,29 @@ TensorRT-LLM is a Python library that:
 
 ```
 PyTorch checkpoint (HuggingFace format)
-        │
-        ▼
+        â”‚
+        â–¼
 TensorRT-LLM model definition
-        │  (Python API that builds TRT network)
-        ▼
+        â”‚  (Python API that builds TRT network)
+        â–¼
 Quantization (weight-only, SmoothQuant, FP8, etc.)
-        │
-        ▼
+        â”‚
+        â–¼
 TensorRT engine build
-        │
-        ▼
+        â”‚
+        â–¼
 TensorRT-LLM runtime
-   • KV cache manager
-   • In-flight batching
-   • Tensor parallelism
-   • Paged attention
+   â€¢ KV cache manager
+   â€¢ In-flight batching
+   â€¢ Tensor parallelism
+   â€¢ Paged attention
 ```
 
 The key difference from standard TensorRT: TensorRT-LLM is **model-aware**. It knows about transformer architectures, attention mechanisms, and autoregressive generation. Standard TensorRT treats the model as an opaque graph.
 
 **Multi-GPU support:** TensorRT-LLM supports tensor parallelism (splitting layers across GPUs) and pipeline parallelism (splitting stages across GPUs) for models too large for a single GPU. Communication uses NCCL over NVLink (within a node) or InfiniBand (across nodes). Key topology pitfalls:
 - Tensor parallelism degree must divide the number of attention heads evenly
-- NVLink provides 900 GB/s (H100); PCIe provides ~64 GB/s — TP across PCIe-only connections is 10–15× slower
+- NVLink provides 900 GB/s (H100); PCIe provides ~64 GB/s â€” TP across PCIe-only connections is 10â€“15Ã— slower
 - Pipeline parallelism adds latency (pipeline bubbles) but reduces per-GPU memory; useful when TP alone can't fit the model
 
 ---
@@ -1312,11 +1314,11 @@ The key difference from standard TensorRT: TensorRT-LLM is **model-aware**. It k
 
 For LLMs, **weight-only quantization** (W4A16 or W8A16) is often more effective than full INT8 quantization (W8A8). Why? Because autoregressive generation is memory-bandwidth-bound: you read the entire weight matrix every token but only compute a small number of operations (batch size 1 during generation).
 
-Reducing weight precision from FP16 to INT4 cuts memory bandwidth by 4×, which directly translates to ~3–4× throughput improvement for generation.
+Reducing weight precision from FP16 to INT4 cuts memory bandwidth by 4Ã—, which directly translates to ~3â€“4Ã— throughput improvement for generation.
 
 **W4A16:** Weights are INT4 (4-bit), activations stay in FP16. The INT4 weights are dequantized to FP16 on-the-fly during matrix multiplication. The dequantization is fused into the GEMM kernel, so there is no overhead.
 
-**W8A16:** Weights are INT8, activations FP16. Less aggressive, better accuracy, ~2× memory bandwidth reduction.
+**W8A16:** Weights are INT8, activations FP16. Less aggressive, better accuracy, ~2Ã— memory bandwidth reduction.
 
 ```python
 from tensorrt_llm import LLaMAForCausalLM
@@ -1349,7 +1351,7 @@ model = LLaMAForCausalLM.from_hugging_face(
 )
 ```
 
-The `smoothquant_val` (α) controls the migration strength — how aggressively to shift quantization difficulty from activations to weights. 0.5 is a common default. Higher values (0.7–0.9) shift more difficulty to weights, which helps when activation outliers are extreme.
+The `smoothquant_val` (Î±) controls the migration strength â€” how aggressively to shift quantization difficulty from activations to weights. 0.5 is a common default. Higher values (0.7â€“0.9) shift more difficulty to weights, which helps when activation outliers are extreme.
 
 ---
 
@@ -1381,7 +1383,7 @@ model = LLaMAForCausalLM.from_hugging_face(
 )
 ```
 
-GPTQ and AWQ pre-quantized models avoid the need to run calibration in TensorRT-LLM — the quantization parameters are already computed and stored in the checkpoint.
+GPTQ and AWQ pre-quantized models avoid the need to run calibration in TensorRT-LLM â€” the quantization parameters are already computed and stored in the checkpoint.
 
 ---
 
@@ -1416,7 +1418,7 @@ For new deployments on Hopper+, FP8 is usually the right default choice.
 
 ### KV Cache Quantization
 
-The KV cache stores past key-value pairs for all layers, all heads, across all tokens in the sequence. For long-context models (32K–128K tokens), the KV cache can consume more memory than the model weights.
+The KV cache stores past key-value pairs for all layers, all heads, across all tokens in the sequence. For long-context models (32Kâ€“128K tokens), the KV cache can consume more memory than the model weights.
 
 TensorRT-LLM supports KV cache quantization to INT8 or FP8:
 
@@ -1430,25 +1432,25 @@ quant_mode = QuantMode.from_description(
 )
 ```
 
-**Impact:** Quantizing the KV cache to INT8 cuts its memory by 2× (from FP16), allowing either longer sequences or larger batch sizes. The accuracy impact is typically minimal because the KV cache values are read back and dequantized before the attention computation.
+**Impact:** Quantizing the KV cache to INT8 cuts its memory by 2Ã— (from FP16), allowing either longer sequences or larger batch sizes. The accuracy impact is typically minimal because the KV cache values are read back and dequantized before the attention computation.
 
 > **Connecting to Chapter 18:** The KV cache is the "second memory wall" for LLMs. As context length grows, KV cache size exceeds weight size, and weight quantization alone is not enough. KV cache quantization (FP8 or NVFP4) pushes the "crossover point" further, extending the batch size and sequence length you can serve before hitting the memory wall.
 
 ### Paged KV-Caching: Solving Memory Fragmentation
 
-Quantization reduces the *size* of each KV entry, but it doesn't solve *fragmentation*. Without paging, TensorRT-LLM pre-allocates a contiguous block of memory for each request's maximum sequence length. If requests have different lengths, the shorter ones waste their pre-allocated tails — and you run out of memory even when total KV usage is well below capacity.
+Quantization reduces the *size* of each KV entry, but it doesn't solve *fragmentation*. Without paging, TensorRT-LLM pre-allocates a contiguous block of memory for each request's maximum sequence length. If requests have different lengths, the shorter ones waste their pre-allocated tails â€” and you run out of memory even when total KV usage is well below capacity.
 
 **PagedAttention** (virtual memory for GPUs) solves this by allocating KV cache in fixed-size blocks (pages) rather than contiguous per-request arrays. As a request generates more tokens, new pages are allocated on demand. When a request finishes, its pages are returned to the pool instantly.
 
 ```
 Without paging:                         With paging:
-┌──────────────────────────┐            ┌───┬───┬───┬───┬───┬───┐
-│ Request A: 2048 tokens   │            │ A │ A │ B │ C │ A │ B │ ← pages
-│     (1500 wasted)        │            └───┴───┴───┴───┴───┴───┘
-├──────────────────────────┤              No waste: pages freed
-│ Request B: 2048 tokens   │              as requests complete.
-│     (800 wasted)         │              New requests reuse pages.
-└──────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”            â”Œâ”€â”€â”€â”¬â”€â”€â”€â”¬â”€â”€â”€â”¬â”€â”€â”€â”¬â”€â”€â”€â”¬â”€â”€â”€â”
+â”‚ Request A: 2048 tokens   â”‚            â”‚ A â”‚ A â”‚ B â”‚ C â”‚ A â”‚ B â”‚ â† pages
+â”‚     (1500 wasted)        â”‚            â””â”€â”€â”€â”´â”€â”€â”€â”´â”€â”€â”€â”´â”€â”€â”€â”´â”€â”€â”€â”´â”€â”€â”€â”˜
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤              No waste: pages freed
+â”‚ Request B: 2048 tokens   â”‚              as requests complete.
+â”‚     (800 wasted)         â”‚              New requests reuse pages.
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 **How to enable paged KV in TRT-LLM:**
@@ -1481,7 +1483,7 @@ If throughput doesn't increase when moving from FP16 to INT8 weights, you are li
 
 ### TRT-LLM Quantization Recipe Matrix
 
-TensorRT-LLM's quantization feature set is now broad. Here is the complete recipe matrix — the deployment-side answer to Chapters 15–19:
+TensorRT-LLM's quantization feature set is now broad. Here is the complete recipe matrix â€” the deployment-side answer to Chapters 15â€“19:
 
 | Recipe | Weights | Activations | KV Cache | Best GPU | Use Case |
 |--------|---------|-------------|----------|----------|----------|
@@ -1498,10 +1500,10 @@ TensorRT-LLM's quantization feature set is now broad. Here is the complete recip
 | **FP4 + NVFP4 KV** | FP4 E2M1 | FP8 | NVFP4 | Blackwell | Blackwell with long-context KV cache reduction |
 
 **How to choose:**
-- **Memory-bound decode (batch=1, long context):** W4A16 AWQ or GPTQ — maximum memory bandwidth reduction
-- **Compute-bound prefill (large batch):** W8A8 SmoothQuant — activations also quantized for compute speedup
-- **Hopper+ (new deployments):** FP8 — best accuracy/performance/simplicity trade-off
-- **Blackwell:** FP4/NVFP4 — maximum compression with hardware acceleration
+- **Memory-bound decode (batch=1, long context):** W4A16 AWQ or GPTQ â€” maximum memory bandwidth reduction
+- **Compute-bound prefill (large batch):** W8A8 SmoothQuant â€” activations also quantized for compute speedup
+- **Hopper+ (new deployments):** FP8 â€” best accuracy/performance/simplicity trade-off
+- **Blackwell:** FP4/NVFP4 â€” maximum compression with hardware acceleration
 - **Long-context KV pressure:** Add KV cache FP8 or NVFP4 to any recipe above
 
 ### LLM Recipe by Workload Phase (Advanced)
@@ -1510,7 +1512,7 @@ LLM inference has three distinct phases, and each has a different bottleneck. Ma
 
 | Phase | Bottleneck | Best Recipe | Why |
 |-------|-----------|-------------|-----|
-| **Prefill** (processing the prompt) | Compute-bound (large matrix multiplies) | W8A8 SmoothQuant or FP8 | Both weights AND activations are quantized → Tensor Core speedup matters here |
+| **Prefill** (processing the prompt) | Compute-bound (large matrix multiplies) | W8A8 SmoothQuant or FP8 | Both weights AND activations are quantized â†’ Tensor Core speedup matters here |
 | **Decode** (generating tokens one by one) | Memory-bandwidth-bound (read entire weight matrix per token) | W4A16 AWQ or GPTQ | Only weight bandwidth matters; activation quantization adds complexity without helping |
 | **Long-context** (>8K tokens) | KV-cache memory | Add KV cache FP8/NVFP4 to any recipe above | Weight recipe alone isn't enough; KV cache dominates memory at long contexts |
 
@@ -1527,7 +1529,7 @@ INPUT:
   context_length:     short (<2K) | medium (2K-8K) | long (8K-128K)
   accuracy_tolerance: strict (<0.1 ppl) | moderate (<0.5 ppl) | relaxed (<1.0 ppl)
 
-OUTPUT → recommended_recipe, fallback_recipe:
+OUTPUT â†’ recommended_recipe, fallback_recipe:
 
   Hopper + any batch + strict:       FP8,               fallback: FP16
   Hopper + any batch + moderate:     FP8 + FP8 KV,      fallback: FP8
@@ -1570,10 +1572,10 @@ python quantize.py --model_dir meta-llama/Llama-2-7b-hf \
 
 Complete example: deploying LLaMA 2 7B with INT4 weights on an A100:
 
-> **⚠ HuggingFace Gating Prerequisite:** LLaMA models require HuggingFace token + Meta model access approval. Without this, the download will fail silently or return a 401 error.
+> **âš  HuggingFace Gating Prerequisite:** LLaMA models require HuggingFace token + Meta model access approval. Without this, the download will fail silently or return a 401 error.
 > ```bash
 > # 1. Request access at https://huggingface.co/meta-llama/Llama-2-7b-hf
-> #    (requires a HuggingFace account and Meta approval — typically ~1 hour)
+> #    (requires a HuggingFace account and Meta approval â€” typically ~1 hour)
 >
 > # 2. Create a HuggingFace token at https://huggingface.co/settings/tokens
 >
@@ -1626,13 +1628,13 @@ python run.py \
 | W8A8 (SmoothQuant) | 7 GB | ~90 tok/s | 5.54 |
 | FP8 (H100 only) | 7 GB | ~120 tok/s | 5.48 |
 
-The W4A16 configuration fits the entire model in ~3.5GB, leaving the rest of the A100's 80GB for KV cache — enabling large batch sizes or very long contexts.
+The W4A16 configuration fits the entire model in ~3.5GB, leaving the rest of the A100's 80GB for KV cache â€” enabling large batch sizes or very long contexts.
 
 ---
 
 ## NVIDIA TensorRT Model Optimizer (ModelOpt)
 
-ModelOpt is NVIDIA's training-side quantization and compression toolkit — the NVIDIA equivalent of Qualcomm's AIMET. It runs in PyTorch and provides quantization, sparsity, and distillation techniques that produce models ready for TensorRT compilation.
+ModelOpt is NVIDIA's training-side quantization and compression toolkit â€” the NVIDIA equivalent of Qualcomm's AIMET. It runs in PyTorch and provides quantization, sparsity, and distillation techniques that produce models ready for TensorRT compilation.
 
 ---
 
@@ -1640,11 +1642,11 @@ ModelOpt is NVIDIA's training-side quantization and compression toolkit — the 
 
 ModelOpt provides:
 
-1. **Post-Training Quantization (PTQ)** — calibrate and quantize a pre-trained model without retraining.
-2. **Quantization-Aware Training (QAT)** — fine-tune a model with simulated quantization noise.
-3. **Sparsity** — prune model weights to 2:4 structured sparsity for Ampere+ Tensor Cores.
-4. **Knowledge distillation** — train a smaller/quantized model using a larger teacher model.
-5. **Export** — produce ONNX models with explicit quantization nodes that TensorRT can consume directly.
+1. **Post-Training Quantization (PTQ)** â€” calibrate and quantize a pre-trained model without retraining.
+2. **Quantization-Aware Training (QAT)** â€” fine-tune a model with simulated quantization noise.
+3. **Sparsity** â€” prune model weights to 2:4 structured sparsity for Ampere+ Tensor Cores.
+4. **Knowledge distillation** â€” train a smaller/quantized model using a larger teacher model.
+5. **Export** â€” produce ONNX models with explicit quantization nodes that TensorRT can consume directly.
 
 ---
 
@@ -1716,11 +1718,11 @@ The exported ONNX contains explicit QuantizeLinear/DequantizeLinear nodes. Tenso
 
 ### Sparsity Support
 
-Ampere and later GPUs support **2:4 structured sparsity**: out of every 4 consecutive weight values, exactly 2 must be zero. The Tensor Core hardware can skip the zero multiplications, achieving up to 2× speedup.
+Ampere and later GPUs support **2:4 structured sparsity**: out of every 4 consecutive weight values, exactly 2 must be zero. The Tensor Core hardware can skip the zero multiplications, achieving up to 2Ã— speedup.
 
 ModelOpt provides sparsity tools:
 
-> **⚠ Fine-tuning is not optional.** Unlike quantization (where PTQ alone often works for CNNs), 2:4 sparsity almost always requires fine-tuning to recover accuracy. Zeroing out 50% of weights is a destructive operation — without retraining, expect 2–5% accuracy loss on CNNs and significant degradation on LLMs. Budget 5–20 epochs of fine-tuning (or 1–2% of original training compute) as a rule of thumb.
+> **âš  Fine-tuning is not optional.** Unlike quantization (where PTQ alone often works for CNNs), 2:4 sparsity almost always requires fine-tuning to recover accuracy. Zeroing out 50% of weights is a destructive operation â€” without retraining, expect 2â€“5% accuracy loss on CNNs and significant degradation on LLMs. Budget 5â€“20 epochs of fine-tuning (or 1â€“2% of original training compute) as a rule of thumb.
 
 ```python
 import modelopt.torch.sparsity as mts
@@ -1728,7 +1730,7 @@ import modelopt.torch.sparsity as mts
 # Apply 2:4 structured sparsity (this zeros out 2 of every 4 weights)
 model = mts.sparsify(model, mts.SPARSITY_2_4_CFG, forward_loop=calibration_fn)
 
-# Fine-tune to recover accuracy — THIS STEP IS MANDATORY
+# Fine-tune to recover accuracy â€” THIS STEP IS MANDATORY
 # Without it, accuracy will degrade significantly
 for epoch in range(5):  # 5-20 epochs typical; monitor val loss
     train_one_epoch(model, train_loader)
@@ -1739,7 +1741,7 @@ for epoch in range(5):  # 5-20 epochs typical; monitor val loss
 mts.export(model, "model_sparse.onnx", dummy_input)
 ```
 
-**Sparsity + Quantization together:** You can combine 2:4 sparsity with INT8 quantization. The model is both sparse and quantized — the Tensor Core computes on the non-zero INT8 values, achieving both the sparsity speedup and the quantization speedup.
+**Sparsity + Quantization together:** You can combine 2:4 sparsity with INT8 quantization. The model is both sparse and quantized â€” the Tensor Core computes on the non-zero INT8 values, achieving both the sparsity speedup and the quantization speedup.
 
 ```python
 # First sparsify
@@ -1794,7 +1796,7 @@ mtq.export(model, "resnet50_int8.onnx", dummy)
 
 ### ModelOpt for LLM Quantization
 
-ModelOpt is not just for CNNs — it is NVIDIA's recommended tool for LLM post-training quantization, and TensorRT-LLM's quantization scripts directly reference ModelOpt. ModelOpt supports advanced PTQ algorithms specifically designed for transformer architectures:
+ModelOpt is not just for CNNs â€” it is NVIDIA's recommended tool for LLM post-training quantization, and TensorRT-LLM's quantization scripts directly reference ModelOpt. ModelOpt supports advanced PTQ algorithms specifically designed for transformer architectures:
 
 | Algorithm | Config | What It Does | When to Use |
 |-----------|--------|-------------|-------------|
@@ -1803,9 +1805,9 @@ ModelOpt is not just for CNNs — it is NVIDIA's recommended tool for LLM post-t
 | **FP8** | `FP8_DEFAULT_CFG` | Per-tensor FP8 E4M3 scaling | Hopper+ deployments with best accuracy |
 | **Block-wise INT4** | `INT4_BLOCKWISE_CFG` | Per-group INT4 with fine-grained scales | Aggressive LLM compression |
 
-**The ModelOpt → TRT-LLM pipeline:**
+**The ModelOpt â†’ TRT-LLM pipeline:**
 ```
-ModelOpt quantize (PyTorch) → export checkpoint → trtllm-build → TRT-LLM engine
+ModelOpt quantize (PyTorch) â†’ export checkpoint â†’ trtllm-build â†’ TRT-LLM engine
 ```
 
 ModelOpt produces quantized checkpoints (or Q/DQ ONNX); TensorRT/TRT-LLM consumes them. Think of ModelOpt as "fake quant in PyTorch; speedup happens after export."
@@ -1830,7 +1832,7 @@ model = mtq.quantize(model, mtq.FP8_DEFAULT_CFG, forward_loop=calibrate)
 mtq.export(model, "llama2_7b_fp8_checkpoint")
 ```
 
-> **ModelOpt vs. TensorRT-native calibration:** ModelOpt is required for sparsity (2:4), distillation-aware quantization, and advanced LLM PTQ algorithms (SmoothQuant, AWQ). Native TensorRT calibration (implicit) is sufficient only for basic CNN PTQ and is deprecated. For any new project — especially transformers — start with ModelOpt.
+> **ModelOpt vs. TensorRT-native calibration:** ModelOpt is required for sparsity (2:4), distillation-aware quantization, and advanced LLM PTQ algorithms (SmoothQuant, AWQ). Native TensorRT calibration (implicit) is sufficient only for basic CNN PTQ and is deprecated. For any new project â€” especially transformers â€” start with ModelOpt.
 
 ---
 
@@ -1859,7 +1861,7 @@ Torch-TensorRT supports PTQ for INT8, FP8, and FP4 via ModelOpt. It is the recom
 
 ---
 
-# ── ADVANCED TIER ──
+# â”€â”€ ADVANCED TIER â”€â”€
 
 > **Advanced Goals:** Predictable performance + wide model coverage. After this tier, you can explain where time goes (layer profile + Nsight), eliminate reformat overhead where possible, and handle unsupported ops via rewrite/surgery/plugin decision tree.
 >
@@ -1867,7 +1869,7 @@ Torch-TensorRT supports PTQ for INT8, FP8, and FP4 via ModelOpt. It is the recom
 
 ## cuDNN and cuBLAS: The Kernel Layer
 
-Underneath TensorRT, the actual computation happens in **cuDNN** (CUDA Deep Neural Network library, for convolutions and normalization) and **cuBLAS** (CUDA Basic Linear Algebra Subprograms, for matrix multiplications). These libraries provide the GPU kernels — the hand-optimized assembly code that runs on Tensor Cores.
+Underneath TensorRT, the actual computation happens in **cuDNN** (CUDA Deep Neural Network library, for convolutions and normalization) and **cuBLAS** (CUDA Basic Linear Algebra Subprograms, for matrix multiplications). These libraries provide the GPU kernels â€” the hand-optimized assembly code that runs on Tensor Cores.
 
 ---
 
@@ -1885,15 +1887,15 @@ TensorRT benchmarks each kernel variant on the target GPU and selects the fastes
 
 For each layer in the network, TensorRT:
 
-1. **Enumerates all candidate tactics** — queries cuDNN/cuBLAS for every kernel that can compute this layer with the requested precision and input/output formats. A single Conv layer might have 20–50 candidate tactics.
+1. **Enumerates all candidate tactics** â€” queries cuDNN/cuBLAS for every kernel that can compute this layer with the requested precision and input/output formats. A single Conv layer might have 20â€“50 candidate tactics.
 
-2. **Benchmarks each tactic** — runs each kernel multiple times with representative data and measures execution time. This is why engine builds are slow: a model with 100 layers × 30 tactics = 3,000 micro-benchmarks.
+2. **Benchmarks each tactic** â€” runs each kernel multiple times with representative data and measures execution time. This is why engine builds are slow: a model with 100 layers Ã— 30 tactics = 3,000 micro-benchmarks.
 
-3. **Considers format propagation** — a tactic might be fast in isolation, but if it requires a different tensor layout (e.g., NHWC→NCHW conversion) than the next layer, the reformat overhead can negate the kernel speedup. TensorRT solves this as a global graph optimization, not a greedy per-layer decision.
+3. **Considers format propagation** â€” a tactic might be fast in isolation, but if it requires a different tensor layout (e.g., NHWCâ†’NCHW conversion) than the next layer, the reformat overhead can negate the kernel speedup. TensorRT solves this as a global graph optimization, not a greedy per-layer decision.
 
-4. **Selects the fastest end-to-end combination** — the final engine uses the tactic combination that minimizes total inference time, including any necessary reformat operations between layers.
+4. **Selects the fastest end-to-end combination** â€” the final engine uses the tactic combination that minimizes total inference time, including any necessary reformat operations between layers.
 
-**Why this matters for quantization:** INT8 and FP8 tactics operate on different data layouts than FP16 tactics. A mixed-precision engine (some layers INT8, some FP16) may spend significant time on reformat operations between layers. This is why the `--dumpProfile` output sometimes shows high "Reformat" time — it's the cost of crossing precision boundaries.
+**Why this matters for quantization:** INT8 and FP8 tactics operate on different data layouts than FP16 tactics. A mixed-precision engine (some layers INT8, some FP16) may spend significant time on reformat operations between layers. This is why the `--dumpProfile` output sometimes shows high "Reformat" time â€” it's the cost of crossing precision boundaries.
 
 **Tactic timing cache:** Because tactic selection is expensive, TensorRT can cache the results. On subsequent builds (same GPU, same TensorRT version), the cache eliminates re-benchmarking:
 
@@ -1917,11 +1919,11 @@ For INT8:
 
 \\(C_{m \times n}^{int32} += A_{m \times k}^{int8} \times B_{k \times n}^{int8}\\)
 
-The Tensor Core processes a 8×8×32 tile in a single cycle:
-- Reads 8×32 = 256 INT8 values from matrix A
-- Reads 32×8 = 256 INT8 values from matrix B
-- Computes 8×8 = 64 INT32 dot products (each dot product sums 32 INT8×INT8 products)
-- Accumulates into 8×8 = 64 INT32 values
+The Tensor Core processes a 8Ã—8Ã—32 tile in a single cycle:
+- Reads 8Ã—32 = 256 INT8 values from matrix A
+- Reads 32Ã—8 = 256 INT8 values from matrix B
+- Computes 8Ã—8 = 64 INT32 dot products (each dot product sums 32 INT8Ã—INT8 products)
+- Accumulates into 8Ã—8 = 64 INT32 values
 
 **Alignment requirements:** For maximum Tensor Core utilization:
 - Matrix dimensions should be multiples of 16 (ideally 128 for best occupancy)
@@ -1954,13 +1956,13 @@ cublasLtMatmul(
 );
 ```
 
-The scaling factors are critical for FP8 — without proper scaling, FP8's limited range (±448 for E4M3) causes overflow or underflow. NVIDIA's Transformer Engine manages these scales automatically during training and inference.
+The scaling factors are critical for FP8 â€” without proper scaling, FP8's limited range (Â±448 for E4M3) causes overflow or underflow. NVIDIA's Transformer Engine manages these scales automatically during training and inference.
 
 ---
 
-## Triton Inference Server — Serving Quantized Models
+## Triton Inference Server â€” Serving Quantized Models
 
-Triton is NVIDIA's model serving infrastructure. It is not a quantization tool — it is what runs your quantized TensorRT engine in production, handling HTTP/gRPC requests, batching, multi-model management, and scaling.
+Triton is NVIDIA's model serving infrastructure. It is not a quantization tool â€” it is what runs your quantized TensorRT engine in production, handling HTTP/gRPC requests, batching, multi-model management, and scaling.
 
 ---
 
@@ -1970,16 +1972,16 @@ Triton sits between your application (sending inference requests) and the GPU (r
 
 ```
 Client (HTTP/gRPC request)
-        │
-        ▼
+        â”‚
+        â–¼
 Triton Inference Server
-   ├── Request queue
-   ├── Dynamic batcher (groups requests into batches)
-   ├── Scheduler (routes to correct model/GPU)
-   ├── Model executor (runs TensorRT engine)
-   └── Response handler
-        │
-        ▼
+   â”œâ”€â”€ Request queue
+   â”œâ”€â”€ Dynamic batcher (groups requests into batches)
+   â”œâ”€â”€ Scheduler (routes to correct model/GPU)
+   â”œâ”€â”€ Model executor (runs TensorRT engine)
+   â””â”€â”€ Response handler
+        â”‚
+        â–¼
 Client (receives prediction)
 ```
 
@@ -1989,35 +1991,35 @@ Why does this matter for quantization? Because quantized models change the throu
 
 ### Loading TensorRT Engines in Triton
 
-Triton loads TensorRT engines from a **model repository** — a directory with a specific structure. Triton discovers models by scanning this directory at startup. Here is a complete example showing multiple models (CNN + LLM) in a single repository:
+Triton loads TensorRT engines from a **model repository** â€” a directory with a specific structure. Triton discovers models by scanning this directory at startup. Here is a complete example showing multiple models (CNN + LLM) in a single repository:
 
 ```
-model_repository/                         ← Root (passed via --model-repository)
-├── resnet50_int8/                        ← CNN model (TensorRT plan)
-│   ├── config.pbtxt                      ← Model configuration
-│   └── 1/                               ← Version 1
-│       └── model.plan                    ← Your TensorRT engine file
-├── yolov8_fp16/                          ← Another CNN model
-│   ├── config.pbtxt
-│   └── 1/
-│       └── model.plan
-├── llama2_7b_fp8/                        ← LLM model (TRT-LLM backend)
-│   ├── config.pbtxt
-│   └── 1/                               ← Version directory (engine path in config)
-│       └── (empty — engine_dir set in config.pbtxt parameters)
-└── resnet50_with_plugin/                 ← Model with custom plugin
-    ├── config.pbtxt
-    ├── 1/
-    │   └── model.plan
-    └── plugins/
-        └── libmycustomplugin.so          ← Custom plugin shared library
+model_repository/                         â† Root (passed via --model-repository)
+â”œâ”€â”€ resnet50_int8/                        â† CNN model (TensorRT plan)
+â”‚   â”œâ”€â”€ config.pbtxt                      â† Model configuration
+â”‚   â””â”€â”€ 1/                               â† Version 1
+â”‚       â””â”€â”€ model.plan                    â† Your TensorRT engine file
+â”œâ”€â”€ yolov8_fp16/                          â† Another CNN model
+â”‚   â”œâ”€â”€ config.pbtxt
+â”‚   â””â”€â”€ 1/
+â”‚       â””â”€â”€ model.plan
+â”œâ”€â”€ llama2_7b_fp8/                        â† LLM model (TRT-LLM backend)
+â”‚   â”œâ”€â”€ config.pbtxt
+â”‚   â””â”€â”€ 1/                               â† Version directory (engine path in config)
+â”‚       â””â”€â”€ (empty â€” engine_dir set in config.pbtxt parameters)
+â””â”€â”€ resnet50_with_plugin/                 â† Model with custom plugin
+    â”œâ”€â”€ config.pbtxt
+    â”œâ”€â”€ 1/
+    â”‚   â””â”€â”€ model.plan
+    â””â”€â”€ plugins/
+        â””â”€â”€ libmycustomplugin.so          â† Custom plugin shared library
 ```
 
 **Key rules for the model repository:**
 1. Each model lives in its own directory, named exactly as it will be addressed in API calls
 2. The version subdirectory (`1/`, `2/`, etc.) allows serving multiple versions simultaneously
 3. The engine file must be named `model.plan` (for `tensorrt_plan` platform) or the name specified in `config.pbtxt`
-4. Input/output tensor names in `config.pbtxt` must exactly match the engine's binding names — you cannot rename them
+4. Input/output tensor names in `config.pbtxt` must exactly match the engine's binding names â€” you cannot rename them
 
 **config.pbtxt:**
 ```protobuf
@@ -2054,11 +2056,11 @@ Note: the input/output data types are FP32 even though the engine internally run
 Triton can infer `config.pbtxt` directly from the engine file. Launch Triton with `--strict-model-config=false` and it will read the engine's binding names, data types, and dimensions automatically:
 
 ```bash
-# No config.pbtxt needed — Triton reads the engine's metadata
+# No config.pbtxt needed â€” Triton reads the engine's metadata
 tritonserver --model-repository=/models --strict-model-config=false
 ```
 
-This is the fastest way to get a model serving. Triton generates a minimal config with the correct tensor names and types. However, the auto-generated config has **no dynamic batching, no preferred batch sizes, and no queue delay tuning** — it's a bare-minimum starting point.
+This is the fastest way to get a model serving. Triton generates a minimal config with the correct tensor names and types. However, the auto-generated config has **no dynamic batching, no preferred batch sizes, and no queue delay tuning** â€” it's a bare-minimum starting point.
 
 **Option 2: Write config explicitly (production)**
 
@@ -2093,7 +2095,7 @@ The general principle: quantized models can handle larger batch sizes at the sam
 
 ### Triton Correctness Gate (Intermediate)
 
-Before declaring your Triton deployment ready, verify that the Triton endpoint produces the same results as your local TensorRT runtime. Triton adds batching, request scheduling, and network serialization — any of these can introduce subtle bugs:
+Before declaring your Triton deployment ready, verify that the Triton endpoint produces the same results as your local TensorRT runtime. Triton adds batching, request scheduling, and network serialization â€” any of these can introduce subtle bugs:
 
 ```python
 # Available in: any environment with tritonclient (pip install tritonclient[http])
@@ -2111,26 +2113,26 @@ inputs[0].set_data_from_numpy(test_input.astype(np.float32))
 triton_result = client.infer("resnet50_int8", inputs)
 triton_output = triton_result.as_numpy("output")
 
-# 3. Compare — should be identical (bitwise or very close)
+# 3. Compare â€” should be identical (bitwise or very close)
 max_diff = np.max(np.abs(local_output - triton_output))
 assert max_diff < 1e-5, f"Triton output differs from local: max_diff={max_diff}"
 # If this fails: check config.pbtxt tensor names, data types, and dims
 ```
 
-> **If Triton output differs from local:** The #1 cause is a tensor name mismatch in `config.pbtxt` — see the Preprocessing Mismatch Checklist. The #2 cause is a shape mismatch (e.g., Triton adds a batch dimension that your config doesn't expect).
+> **If Triton output differs from local:** The #1 cause is a tensor name mismatch in `config.pbtxt` â€” see the Preprocessing Mismatch Checklist. The #2 cause is a shape mismatch (e.g., Triton adds a batch dimension that your config doesn't expect).
 
-### Dynamic Shapes → Profiles → Triton (The Chain)
+### Dynamic Shapes â†’ Profiles â†’ Triton (The Chain)
 
-> **Boxed rule:** If any input dimension varies at serving time (batch size, sequence length, image resolution), the TensorRT engine MUST have optimization profiles. Triton will not invent profiles — it uses whatever the engine provides, and rejects inputs outside the min–max range.
+> **Boxed rule:** If any input dimension varies at serving time (batch size, sequence length, image resolution), the TensorRT engine MUST have optimization profiles. Triton will not invent profiles â€” it uses whatever the engine provides, and rejects inputs outside the minâ€“max range.
 
 The chain works like this:
 
 ```
-1. ONNX model has dynamic dims    →  input: [batch, 3, 224, 224] where batch is dynamic
-2. trtexec build with profiles     →  --minShapes=input:1x3x224x224
+1. ONNX model has dynamic dims    â†’  input: [batch, 3, 224, 224] where batch is dynamic
+2. trtexec build with profiles     â†’  --minShapes=input:1x3x224x224
                                        --optShapes=input:16x3x224x224
                                        --maxShapes=input:64x3x224x224
-3. Triton serves within that range →  max_batch_size: 64 in config.pbtxt
+3. Triton serves within that range â†’  max_batch_size: 64 in config.pbtxt
                                       (requests with batch > 64 will be rejected)
 ```
 
@@ -2148,7 +2150,7 @@ trtexec --onnx=model.onnx --saveEngine=model.plan --fp16 \
 
 # Then in config.pbtxt:
 # max_batch_size: 64
-# dims: [ 3, 224, 224 ]   ← batch dim is handled by max_batch_size, not dims
+# dims: [ 3, 224, 224 ]   â† batch dim is handled by max_batch_size, not dims
 ```
 
 ---
@@ -2157,9 +2159,9 @@ trtexec --onnx=model.onnx --saveEngine=model.plan --fp16 \
 
 The CNN-focused Triton config above does not apply to LLM serving. LLMs have fundamentally different serving patterns:
 
-- **Streaming tokens** — LLMs generate tokens one at a time; clients need decoupled (streaming) responses, not a single batch response
-- **In-flight batching** — different requests are at different generation steps; the TRT-LLM runtime handles batching internally, not Triton's dynamic batcher
-- **Sequence state** — the KV cache must persist across generation steps within a request
+- **Streaming tokens** â€” LLMs generate tokens one at a time; clients need decoupled (streaming) responses, not a single batch response
+- **In-flight batching** â€” different requests are at different generation steps; the TRT-LLM runtime handles batching internally, not Triton's dynamic batcher
+- **Sequence state** â€” the KV cache must persist across generation steps within a request
 
 **TRT-LLM Triton backend deployment:**
 
@@ -2167,10 +2169,10 @@ Triton serves TRT-LLM models via the `tensorrtllm` backend. The model repository
 
 ```
 model_repository/
-└── llama2_7b/
-    ├── config.pbtxt
-    └── 1/
-        └── (empty — engine path specified in config)
+â””â”€â”€ llama2_7b/
+    â”œâ”€â”€ config.pbtxt
+    â””â”€â”€ 1/
+        â””â”€â”€ (empty â€” engine path specified in config)
 ```
 
 ```protobuf
@@ -2199,7 +2201,7 @@ parameters {
 }
 ```
 
-> **Key difference from CNN serving:** For LLMs, Triton delegates batching, KV cache management, and scheduling to the TRT-LLM runtime. Triton's role becomes request routing, HTTP/gRPC handling, and observability — not batch assembly.
+> **Key difference from CNN serving:** For LLMs, Triton delegates batching, KV cache management, and scheduling to the TRT-LLM runtime. Triton's role becomes request routing, HTTP/gRPC handling, and observability â€” not batch assembly.
 
 ---
 
@@ -2213,7 +2215,7 @@ docker run --gpus=1 --rm -p 8000:8000 -p 8001:8001 -p 8002:8002 \
     tritonserver --model-repository=/models
 ```
 
-> **You must provide:** `preprocess()` — your model-specific preprocessing function (same normalization, resize, and channel order used during training). The tensor name `"input"` must exactly match the engine binding name. Install the client with `pip install tritonclient[http]`.
+> **You must provide:** `preprocess()` â€” your model-specific preprocessing function (same normalization, resize, and channel order used during training). The tensor name `"input"` must exactly match the engine binding name. Install the client with `pip install tritonclient[http]`.
 
 ```python
 # 2. Send inference request (Python client)
@@ -2222,7 +2224,7 @@ import numpy as np
 
 client = httpclient.InferenceServerClient("localhost:8000")
 
-# Prepare input — preprocess() must match your training pipeline
+# Prepare input â€” preprocess() must match your training pipeline
 # Example: input_data = normalize(resize(load_image("cat.jpg")))
 input_data = preprocess(image).astype(np.float32)
 
@@ -2230,7 +2232,7 @@ input_data = preprocess(image).astype(np.float32)
 inputs = [httpclient.InferInput("input", input_data.shape, "FP32")]
 inputs[0].set_data_from_numpy(input_data)
 
-# Run inference — "resnet50_int8" must match the model directory name in model_repository/
+# Run inference â€” "resnet50_int8" must match the model directory name in model_repository/
 result = client.infer("resnet50_int8", inputs)
 
 # "output" must match the engine's output binding name exactly
@@ -2271,7 +2273,7 @@ torch.onnx.export(model, dummy, "model.onnx",
 
 **Tip:** Use opset 17+ for best TensorRT compatibility. Check the TensorRT ONNX operator support matrix for your TensorRT version.
 
-> **Standardize tensor names end-to-end.** Use `"input"` and `"output"` (or your model's actual names) consistently across ONNX export → `trtexec` → Triton `config.pbtxt` → client code. To confirm the engine's binding names after build:
+> **Standardize tensor names end-to-end.** Use `"input"` and `"output"` (or your model's actual names) consistently across ONNX export â†’ `trtexec` â†’ Triton `config.pbtxt` â†’ client code. To confirm the engine's binding names after build:
 > ```bash
 > trtexec --loadEngine=model.plan --verbose 2>&1 | grep -i "binding"
 > # Copy the exact names into your Triton config.pbtxt and client code
@@ -2303,13 +2305,13 @@ trtllm-build --checkpoint_dir ./ckpt --output_dir ./engine \
 
 ---
 
-### Step 4: Validate Accuracy — The Mandatory Correctness Gate
+### Step 4: Validate Accuracy â€” The Mandatory Correctness Gate
 
-> **⚠ Do not proceed to Triton deployment until this gate passes.** A deployed engine with wrong outputs is worse than no engine at all. This mirrors the diagnostic discipline from Chapter 20: measure before you serve.
+> **âš  Do not proceed to Triton deployment until this gate passes.** A deployed engine with wrong outputs is worse than no engine at all. This mirrors the diagnostic discipline from Chapter 20: measure before you serve.
 
 Validation has three mandatory levels, in order. Do not skip any:
 
-**Level 1: ONNXRuntime (FP32) vs TensorRT (FP16)** — catches graph conversion errors:
+**Level 1: ONNXRuntime (FP32) vs TensorRT (FP16)** â€” catches graph conversion errors:
 ```bash
 # Available in: NGC tensorrt container (pip install polygraphy if missing)
 polygraphy run model.onnx \
@@ -2317,22 +2319,22 @@ polygraphy run model.onnx \
   --fp16 \
   --atol 1e-3 --rtol 1e-3 \
   --val-range input:[0,1]
-# Expected: "PASSED" — if this fails, the ONNX → TRT conversion broke something
+# Expected: "PASSED" â€” if this fails, the ONNX â†’ TRT conversion broke something
 ```
 
-**Level 2: TensorRT FP16 vs TensorRT INT8** — catches quantization errors:
+**Level 2: TensorRT FP16 vs TensorRT INT8** â€” catches quantization errors:
 ```bash
 polygraphy run model.onnx \
   --trt --trt \
   --fp16 --int8 \
   --atol 5e-3 --rtol 5e-3 \
   --val-range input:[0,1]
-# Expected: "PASSED" with small diffs — if this fails, quantization is hurting accuracy
+# Expected: "PASSED" with small diffs â€” if this fails, quantization is hurting accuracy
 ```
 
-**Level 3: Task metric evaluation** — catches cases where numerical diff is acceptable but task accuracy is not:
+**Level 3: Task metric evaluation** â€” catches cases where numerical diff is acceptable but task accuracy is not:
 ```bash
-# This is model-specific — you must implement your own evaluation loop
+# This is model-specific â€” you must implement your own evaluation loop
 # Example: top-1 accuracy for classification, mAP for detection, perplexity for LLMs
 ```
 
@@ -2343,15 +2345,15 @@ polygraphy run model.onnx \
 >
 > # FAILED example:
 > [E] FAILED | Output: 'output' | max_absdiff=1.234567 | max_reldiff=0.987654 | median_absdiff=0.345678
-> # → Investigate: which layers caused the diff? Use polygraphy debug reduce
+> # â†’ Investigate: which layers caused the diff? Use polygraphy debug reduce
 > ```
 
-**Tolerance selection rule — how to choose atol/rtol:**
+**Tolerance selection rule â€” how to choose atol/rtol:**
 
 | Model Type | Recommended atol | Recommended rtol | When numerical diff is NOT the right metric |
 |-----------|-----------------|-----------------|---------------------------------------------|
 | Classification (CNN) | 1e-3 | 1e-3 | When top-1 prediction changes but diff is small (check top-1 match instead) |
-| Object Detection | 5e-3 | 5e-3 | When bounding boxes shift by >1 pixel — use mAP as the primary metric |
+| Object Detection | 5e-3 | 5e-3 | When bounding boxes shift by >1 pixel â€” use mAP as the primary metric |
 | LLM (logits) | 1e-2 | 1e-2 | LLM logits are high-dimensional; tiny diffs in logit space can flip tokens. Use perplexity or downstream task accuracy instead |
 | Segmentation | 1e-3 | 1e-3 | When pixel-level accuracy matters more than raw activation diff |
 
@@ -2359,10 +2361,10 @@ polygraphy run model.onnx \
 
 If you need programmatic control (e.g., running task-level evaluation on a full dataset):
 
-> **You must provide:** `model_fp32` — your PyTorch model for reference outputs. `run_trt_engine()` — a function that loads a TensorRT engine and runs inference (use the engine loading code from the "Serialization and Deployment" section above). `evaluate()` / `evaluate_trt()` — your task-specific accuracy evaluation functions (e.g., top-1 accuracy for classification, mAP for detection, perplexity for LLMs).
+> **You must provide:** `model_fp32` â€” your PyTorch model for reference outputs. `run_trt_engine()` â€” a function that loads a TensorRT engine and runs inference (use the engine loading code from the "Serialization and Deployment" section above). `evaluate()` / `evaluate_trt()` â€” your task-specific accuracy evaluation functions (e.g., top-1 accuracy for classification, mAP for detection, perplexity for LLMs).
 
 ```python
-# pseudocode — adapt to your evaluation pipeline
+# pseudocode â€” adapt to your evaluation pipeline
 import numpy as np
 
 # FP32 reference (PyTorch)
@@ -2387,20 +2389,20 @@ print(f"FP32: {fp32_acc:.2f}%, INT8: {int8_acc:.2f}%, Drop: {fp32_acc - int8_acc
 - CNNs: <1% top-1 accuracy drop
 - Object detection: <0.5 mAP drop
 - LLMs: <0.5 perplexity points increase
-- If drop exceeds these thresholds, suspect calibration data quality first (Chapter 9 — **Calibration Mismatch**, Chapter 13), then consider SmoothQuant for transformers (Chapter 15 — **Resolution Collapse**, Chapter 14), or fall back to FP16 for the affected layers
+- If drop exceeds these thresholds, suspect calibration data quality first (Chapter 9 â€” **Calibration Mismatch**, Chapter 13), then consider SmoothQuant for transformers (Chapter 15 â€” **Resolution Collapse**, Chapter 14), or fall back to FP16 for the affected layers
 
 ### Preprocessing Mismatch Checklist
 
-> **Reference this list everywhere `preprocess()` is mentioned** — engine run, Triton client, troubleshooting. Preprocessing mismatch is the #1 cause of "the model works in PyTorch but gives wrong results in TensorRT."
+> **Reference this list everywhere `preprocess()` is mentioned** â€” engine run, Triton client, troubleshooting. Preprocessing mismatch is the #1 cause of "the model works in PyTorch but gives wrong results in TensorRT."
 
 Before debugging quantization accuracy, rule out preprocessing:
 
 - [ ] **Same normalization:** mean and std must match training (e.g., ImageNet: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-- [ ] **Same channel order:** RGB vs BGR — OpenCV loads BGR by default; PyTorch `torchvision` expects RGB
+- [ ] **Same channel order:** RGB vs BGR â€” OpenCV loads BGR by default; PyTorch `torchvision` expects RGB
 - [ ] **Same resize/crop:** bilinear vs nearest, center crop vs letterbox, resize before crop vs after
-- [ ] **Same value range:** [0, 1] vs [0, 255] — failing to divide by 255 is a common silent error
+- [ ] **Same value range:** [0, 1] vs [0, 255] â€” failing to divide by 255 is a common silent error
 - [ ] **Same dtype:** input to TensorRT must be float32 (even for INT8 engines), not uint8
-- [ ] **Same spatial order:** NCHW (PyTorch default) vs NHWC — ONNX export preserves PyTorch's NCHW; if your client sends NHWC, outputs will be wrong
+- [ ] **Same spatial order:** NCHW (PyTorch default) vs NHWC â€” ONNX export preserves PyTorch's NCHW; if your client sends NHWC, outputs will be wrong
 
 ---
 
@@ -2431,7 +2433,7 @@ tritonserver --model-repository=/models --log-verbose=1
 
 **You have completed the Intermediate tier when all are true:**
 - [ ] INT8 accuracy validated via Polygraphy diff gate (Level 1 + Level 2 pass)
-- [ ] Triton serving works — model loads as `READY`, inference returns correct results
+- [ ] Triton serving works â€” model loads as `READY`, inference returns correct results
 - [ ] Dynamic batching configured with appropriate queue delay for your quantized model
 - [ ] Dynamic shapes supported with optimization profiles (if input dims vary)
 - [ ] Triton correctness gate passes (local TRT vs Triton output match)
@@ -2468,29 +2470,29 @@ trtexec --onnx=model.onnx --int8 --fp16 --workspace=4096 \
 The most common TensorRT operations in one place. All commands assume you are inside an NGC TensorRT container. For detailed explanation of each command, flags, and expected output, see "trtexec: The Canonical Build and Benchmark Tool" below.
 
 ```bash
-# ── FP16 engine build ──
+# â”€â”€ FP16 engine build â”€â”€
 trtexec --onnx=model.onnx --saveEngine=model_fp16.plan --fp16
 
-# ── INT8 engine build with calibration cache ──
+# â”€â”€ INT8 engine build with calibration cache â”€â”€
 trtexec --onnx=model.onnx --saveEngine=model_int8.plan --int8 --fp16 \
     --calib=calibration.cache
 
-# ── Dynamic shapes engine build with profiles ──
+# â”€â”€ Dynamic shapes engine build with profiles â”€â”€
 trtexec --onnx=model.onnx --saveEngine=model.plan --fp16 \
     --minShapes=input:1x3x224x224 \
     --optShapes=input:8x3x224x224 \
     --maxShapes=input:64x3x224x224
 
-# ── Load and benchmark an existing engine ──
+# â”€â”€ Load and benchmark an existing engine â”€â”€
 trtexec --loadEngine=model.plan --batch=32 --iterations=100 --warmUp=500
 
-# ── Profile per-layer timing (find bottleneck layers) ──
+# â”€â”€ Profile per-layer timing (find bottleneck layers) â”€â”€
 trtexec --loadEngine=model.plan --dumpProfile --separateProfileRun
 
-# ── Compare correctness: ONNXRuntime vs TensorRT ──
+# â”€â”€ Compare correctness: ONNXRuntime vs TensorRT â”€â”€
 polygraphy run model.onnx --onnxrt --trt --atol 1e-3 --rtol 1e-3
 
-# ── Inspect engine binding names (needed for Triton config) ──
+# â”€â”€ Inspect engine binding names (needed for Triton config) â”€â”€
 trtexec --loadEngine=model.plan --verbose 2>&1 | grep "Binding"
 ```
 
@@ -2500,35 +2502,35 @@ At each stage of the pipeline, verify the expected files exist. Missing files in
 
 ```
 After ONNX export:
-  ✓ model.onnx                  ← Exported model graph + weights
+  âœ“ model.onnx                  â† Exported model graph + weights
 
 After calibration (if using implicit INT8):
-  ✓ calibration.cache           ← Computed INT8 scales (reusable across builds)
+  âœ“ calibration.cache           â† Computed INT8 scales (reusable across builds)
 
 After engine build:
-  ✓ model.plan                  ← Compiled TensorRT engine for your specific GPU
-  ✓ timing.cache (optional)     ← Tactic timing cache (speeds up rebuilds)
+  âœ“ model.plan                  â† Compiled TensorRT engine for your specific GPU
+  âœ“ timing.cache (optional)     â† Tactic timing cache (speeds up rebuilds)
 
 After Triton setup:
-  ✓ model_repository/
-      └── my_model/
-          ├── config.pbtxt      ← Triton model configuration
-          └── 1/
-              └── model.plan    ← Engine file (version 1)
+  âœ“ model_repository/
+      â””â”€â”€ my_model/
+          â”œâ”€â”€ config.pbtxt      â† Triton model configuration
+          â””â”€â”€ 1/
+              â””â”€â”€ model.plan    â† Engine file (version 1)
 
 After ModelOpt PTQ:
-  ✓ model_qdq.onnx              ← ONNX with explicit Q/DQ nodes (scales baked in)
+  âœ“ model_qdq.onnx              â† ONNX with explicit Q/DQ nodes (scales baked in)
 
 After TRT-LLM quantization:
-  ✓ checkpoint_dir/             ← Quantized checkpoint (consumed by trtllm-build)
-  ✓ engine_dir/                 ← TRT-LLM engine directory (consumed by Triton)
+  âœ“ checkpoint_dir/             â† Quantized checkpoint (consumed by trtllm-build)
+  âœ“ engine_dir/                 â† TRT-LLM engine directory (consumed by Triton)
 ```
 
 ---
 
 ### trtexec: The Canonical Build and Benchmark Tool
 
-`trtexec` is TensorRT's Swiss Army knife — the standard tool for building engines, benchmarking, and debugging. Every TensorRT workflow starts here.
+`trtexec` is TensorRT's Swiss Army knife â€” the standard tool for building engines, benchmarking, and debugging. Every TensorRT workflow starts here.
 
 **Canonical dynamic-shape build pattern:**
 ```bash
@@ -2544,9 +2546,9 @@ trtexec \
   --verbose
 ```
 
-The `--minShapes/--optShapes/--maxShapes` flags define optimization profiles for dynamic dimensions. TensorRT auto-tunes kernels for the `opt` shape and guarantees correctness across the `min`–`max` range. This is essential for Triton deployment where batch sizes vary.
+The `--minShapes/--optShapes/--maxShapes` flags define optimization profiles for dynamic dimensions. TensorRT auto-tunes kernels for the `opt` shape and guarantees correctness across the `min`â€“`max` range. This is essential for Triton deployment where batch sizes vary.
 
-**Dynamic Shapes First Principles — Micro-Example:**
+**Dynamic Shapes First Principles â€” Micro-Example:**
 
 If your ONNX model has a dynamic batch dimension (common for any model served via Triton):
 
@@ -2569,12 +2571,12 @@ trtexec --onnx=resnet50_dynamic.onnx --saveEngine=resnet50_dynamic.plan --fp16 \
 
 # Step 3: In Triton config.pbtxt:
 #   max_batch_size: 64
-#   dims: [ 3, 224, 224 ]       ← no batch dim here; Triton handles it
+#   dims: [ 3, 224, 224 ]       â† no batch dim here; Triton handles it
 #   dynamic_batching { preferred_batch_size: [8, 16, 32] }
 
 # What happens if profiles are missing in Triton:
-#   → Error: "model expected static shape [1,3,224,224], got [8,3,224,224]"
-#   → Fix: rebuild engine with --minShapes/--optShapes/--maxShapes
+#   â†’ Error: "model expected static shape [1,3,224,224], got [8,3,224,224]"
+#   â†’ Fix: rebuild engine with --minShapes/--optShapes/--maxShapes
 ```
 
 **Precision comparison workflow:**
@@ -2592,19 +2594,19 @@ trtexec --onnx=model.onnx --fp8 --saveEngine=model_fp8.plan
 trtexec --loadEngine=model_int8.plan --dumpProfile --separateProfileRun
 ```
 
-> **Expected output excerpt — successful build:**
+> **Expected output excerpt â€” successful build:**
 > ```
 > [I] [TRT] Detected 1 input and 1 output network tensors.
 > [I] Engine built in 145.234 sec.
 > [I] Saved engine to model_int8.plan
 > ```
 
-> **Expected output excerpt — `--dumpProfile`:**
+> **Expected output excerpt â€” `--dumpProfile`:**
 > ```
 > [I] === Profile (145 layers) ===
 > [I] Layer(Convolution):   conv1 + bn1 + relu      Precision: INT8   Time: 0.032ms
 > [I] Layer(Convolution):   layer1.0.conv1 + bn + relu   Precision: INT8   Time: 0.028ms
-> [I] Layer(Reformat):      Reformat(layer2→layer3)  Precision: FP16→INT8  Time: 0.005ms
+> [I] Layer(Reformat):      Reformat(layer2â†’layer3)  Precision: FP16â†’INT8  Time: 0.005ms
 > [I] ...
 > [I] Total: 1.234ms (87% INT8, 10% FP16, 3% Reformat)
 > ```
@@ -2613,16 +2615,16 @@ trtexec --loadEngine=model_int8.plan --dumpProfile --separateProfileRun
 **Red flags in trtexec output:**
 | Signal | What It Means |
 |--------|--------------|
-| High "Reformat" time | TensorRT is spending time converting tensor layouts between layers — indicates poor fusion |
-| Layer not fused | A layer that should be fused is running as a separate kernel — check if it's an unsupported pattern |
-| Precision mismatch in profile | A layer you expected to run in INT8 is running in FP16 — silent fallback occurred |
+| High "Reformat" time | TensorRT is spending time converting tensor layouts between layers â€” indicates poor fusion |
+| Layer not fused | A layer that should be fused is running as a separate kernel â€” check if it's an unsupported pattern |
+| Precision mismatch in profile | A layer you expected to run in INT8 is running in FP16 â€” silent fallback occurred |
 | "No valid tactics" error | No kernel implementation exists for this layer at the requested precision on this GPU |
 
 ---
 
 ### Deep Profiling: Advanced Engine Inspection
 
-The trtexec red flags above catch common issues. For expert-level diagnosis — understanding *which specific kernel* TensorRT selected for each layer, *why* a layer didn't quantize, and *where* the time is actually going — you need the detailed profiling and layer information export.
+The trtexec red flags above catch common issues. For expert-level diagnosis â€” understanding *which specific kernel* TensorRT selected for each layer, *why* a layer didn't quantize, and *where* the time is actually going â€” you need the detailed profiling and layer information export.
 
 **Step 1: Export per-layer kernel selection and timing.**
 
@@ -2641,7 +2643,7 @@ trtexec --onnx=model.onnx --int8 --fp16 \
 # - Execution time per layer
 ```
 
-**Step 2: Interpret the output — what to look for.**
+**Step 2: Interpret the output â€” what to look for.**
 
 The `layer_info.json` file reveals the builder's internal decisions. Key fields to examine:
 
@@ -2665,9 +2667,9 @@ The `layer_info.json` file reveals the builder's internal decisions. Key fields 
 
 | Tactic Pattern | What It Means | Action |
 |----------------|---------------|--------|
-| `xmma_*` or `hmma_*` | Tensor Core kernel — this is what you want | Good — hardware accelerated |
+| `xmma_*` or `hmma_*` | Tensor Core kernel â€” this is what you want | Good â€” hardware accelerated |
 | `cudnn_*` or `generic_*` | Generic cuDNN kernel, not fused | Check if fusion was blocked; possibly an unsupported pattern |
-| `myelin_*` | Myelin (TensorRT's graph compiler) fused kernel | Good — aggressive fusion happened |
+| `myelin_*` | Myelin (TensorRT's graph compiler) fused kernel | Good â€” aggressive fusion happened |
 | Precision shows `Half` when you expected `Int8` | INT8 kernel was slower or unavailable for this layer | Silent fallback; check if alignment/dimensions are suboptimal |
 | `reformat_*` | Pure data layout conversion, no compute | Overhead; indicates format mismatch between adjacent layers |
 
@@ -2677,7 +2679,7 @@ When a layer stays in FP16 despite `--int8` being set, the reasons are (in order
 
 1. **No INT8 tactic exists** for this layer type on this GPU (e.g., LayerNorm on pre-Hopper GPUs)
 2. **The INT8 tactic was slower** than the FP16 tactic during auto-tuning (TensorRT picks the fastest)
-3. **Dimensions are poorly aligned** — tile sizes don't map efficiently to INT8 Tensor Core tiles
+3. **Dimensions are poorly aligned** â€” tile sizes don't map efficiently to INT8 Tensor Core tiles
 4. **The layer was explicitly forced to FP16** in the network definition
 
 To force the issue and get an error instead of a silent fallback:
@@ -2701,18 +2703,18 @@ nsys-ui profile_report.nsys-rep
 
 In the Nsight Systems timeline, you can see:
 - Each kernel's GPU time and whether it's compute-bound or memory-bound
-- Gaps between kernels (launch overhead — CUDA graphs can eliminate these)
+- Gaps between kernels (launch overhead â€” CUDA graphs can eliminate these)
 - Memory transfer overhead (H2D / D2H copies)
 - Whether multiple streams are overlapping (pipelining)
 
-This is the NVIDIA equivalent of the diagnostic grep commands in Chapter 20's Qualcomm profiling. The workflow is: `trtexec --exportLayerInfo` tells you *what* TensorRT chose → Nsight tells you *how* the GPU actually executed it → the gap between the two reveals your optimization opportunity.
+This is the NVIDIA equivalent of the diagnostic grep commands in Chapter 20's Qualcomm profiling. The workflow is: `trtexec --exportLayerInfo` tells you *what* TensorRT chose â†’ Nsight tells you *how* the GPU actually executed it â†’ the gap between the two reveals your optimization opportunity.
 
 **What to do when the selected tactic is slow:**
 
-Export layer info might reveal that TensorRT's auto-tuning selected a suboptimal tactic — for example, a `generic_*` kernel for a layer that should be running on Tensor Cores. When this happens, you have three levers:
+Export layer info might reveal that TensorRT's auto-tuning selected a suboptimal tactic â€” for example, a `generic_*` kernel for a layer that should be running on Tensor Cores. When this happens, you have three levers:
 
-1. **Adjust tensor dimensions.** Tensor Core kernels require specific alignment (multiples of 8 for FP16, 16 for INT8). If your layer dimensions are slightly off (e.g., hidden_dim=1023 instead of 1024), padding to the aligned size can unlock faster tactics. Check `Inputs.Format` in layer_info.json — `NC/32HW32` indicates a Tensor Core-friendly layout.
-2. **Refactor the graph.** If a layer consistently selects a slow kernel, it may be because the surrounding ops prevent fusion. Use `onnx-graphsurgeon` to restructure — for example, splitting a large grouped convolution into separate convolutions can sometimes unlock better tactics.
+1. **Adjust tensor dimensions.** Tensor Core kernels require specific alignment (multiples of 8 for FP16, 16 for INT8). If your layer dimensions are slightly off (e.g., hidden_dim=1023 instead of 1024), padding to the aligned size can unlock faster tactics. Check `Inputs.Format` in layer_info.json â€” `NC/32HW32` indicates a Tensor Core-friendly layout.
+2. **Refactor the graph.** If a layer consistently selects a slow kernel, it may be because the surrounding ops prevent fusion. Use `onnx-graphsurgeon` to restructure â€” for example, splitting a large grouped convolution into separate convolutions can sometimes unlock better tactics.
 3. **Pin tactics via timing cache.** After finding a good tactic configuration, save the timing cache (`--timingCacheFile=timing.cache`) and reuse it in subsequent builds. This prevents TensorRT from re-autotuning and potentially selecting a different (worse) tactic on a slightly different run.
 
 ```bash
@@ -2734,14 +2736,14 @@ trtexec --onnx=model.onnx --int8 --fp16 \
 ### Polygraphy: The Correctness Debugging Tool
 
 For a complete TensorRT debugging workflow, you need three tools:
-1. **trtexec** — performance and build
-2. **Polygraphy** — correctness, diffing, ONNX sanity, engine inspection
-3. **Nsight** — kernel-level profiling
+1. **trtexec** â€” performance and build
+2. **Polygraphy** â€” correctness, diffing, ONNX sanity, engine inspection
+3. **Nsight** â€” kernel-level profiling
 
 Your chapter already covers trtexec and Nsight. Polygraphy fills the critical gap: **"is my quantized output correct?"**
 
 **What Polygraphy does:**
-- Compares outputs across runtimes (PyTorch → ONNXRuntime → TensorRT)
+- Compares outputs across runtimes (PyTorch â†’ ONNXRuntime â†’ TensorRT)
 - Identifies which layers introduce the largest numerical differences
 - Inspects ONNX graphs for issues before TensorRT consumption
 - Debugs TensorRT engine internals (layer precision, tactics selected)
@@ -2774,33 +2776,33 @@ polygraphy debug precision model.onnx \
 
 ---
 
-### Plugins and Unsupported Operations — Escalation Ladder (Advanced)
+### Plugins and Unsupported Operations â€” Escalation Ladder (Advanced)
 
 TensorRT does not support every ONNX operation or pattern. When the ONNX parser encounters an unsupported op, it fails the build. This is the most common real-world blocker when bringing new models to TensorRT.
 
 **How to detect unsupported layers:**
 ```bash
 # Available in: NGC tensorrt container
-# Verbose ONNX parsing — shows which ops succeed and which fail
+# Verbose ONNX parsing â€” shows which ops succeed and which fail
 trtexec --onnx=model.onnx --verbose 2>&1 | grep -i "error\|unsupported\|warning"
 
 # Polygraphy ONNX inspection
 polygraphy inspect model model.onnx --mode=basic
 ```
 
-**Escalation ladder — always try in this order:**
+**Escalation ladder â€” always try in this order:**
 
 | Step | Approach | Time/Cost | When to Use |
 |------|----------|-----------|-------------|
-| **1. Re-export** | Change PyTorch code to use supported ops, re-export ONNX | ~1 hour | Custom attention → `scaled_dot_product_attention`; custom norm → standard GroupNorm |
-| **2. ONNX surgery** | Rewrite ONNX graph with `onnx-graphsurgeon` | ~2–4 hours | Unsupported op has a mathematical equivalent in supported ops |
-| **3. Plugin (last resort)** | Write C++/CUDA plugin | ~1–2 weeks (including testing) | Genuinely novel op with no ONNX equivalent; custom quantized kernel |
+| **1. Re-export** | Change PyTorch code to use supported ops, re-export ONNX | ~1 hour | Custom attention â†’ `scaled_dot_product_attention`; custom norm â†’ standard GroupNorm |
+| **2. ONNX surgery** | Rewrite ONNX graph with `onnx-graphsurgeon` | ~2â€“4 hours | Unsupported op has a mathematical equivalent in supported ops |
+| **3. Plugin (last resort)** | Write C++/CUDA plugin | ~1â€“2 weeks (including testing) | Genuinely novel op with no ONNX equivalent; custom quantized kernel |
 
 > **Rule:** Plugins are a last resort. They require C++/CUDA expertise, must be maintained across TensorRT versions, and must be distributed with every engine. Always try steps 1 and 2 first.
 
-**Step 1 — Graph rewrite (preferred):** Modify the PyTorch model or ONNX export to use supported operations. For example, replace a custom attention with `torch.nn.functional.scaled_dot_product_attention`, which has good ONNX/TRT support.
+**Step 1 â€” Graph rewrite (preferred):** Modify the PyTorch model or ONNX export to use supported operations. For example, replace a custom attention with `torch.nn.functional.scaled_dot_product_attention`, which has good ONNX/TRT support.
 
-**Step 2 — ONNX surgery:** Use `onnx-graphsurgeon` (NVIDIA's tool) to rewrite the ONNX graph directly — replace unsupported nodes with equivalent supported patterns.
+**Step 2 â€” ONNX surgery:** Use `onnx-graphsurgeon` (NVIDIA's tool) to rewrite the ONNX graph directly â€” replace unsupported nodes with equivalent supported patterns.
 
 ```python
 # Available in: NGC tensorrt container (onnx-graphsurgeon pre-installed)
@@ -2815,14 +2817,14 @@ graph.cleanup().toposort()
 onnx.save(gs.export_onnx(graph), "model_fixed.onnx")
 ```
 
-**Step 3 — TensorRT plugins:** Write a custom C++/CUDA plugin that implements the unsupported op. This is the most work but handles truly custom operations — for example, a novel quantized attention kernel from a research paper that TensorRT doesn't natively support.
+**Step 3 â€” TensorRT plugins:** Write a custom C++/CUDA plugin that implements the unsupported op. This is the most work but handles truly custom operations â€” for example, a novel quantized attention kernel from a research paper that TensorRT doesn't natively support.
 
 **Plugin Distribution Checklist (Advanced):**
 - [ ] Plugin `.so` lives alongside the engine in the model repository (`plugins/` subdirectory)
 - [ ] Triton loads it via `LD_PRELOAD` or the model config's `parameters` section
 - [ ] `LD_LIBRARY_PATH` includes the plugin directory in the container (set in Dockerfile or `docker run -e`)
-- [ ] Plugin is compiled against the **same** TensorRT version as the engine — version mismatches cause silent crashes
-- [ ] Plugin `.so` is pinned and versioned in your artifact registry (not "latest" — a TensorRT upgrade requires plugin recompile)
+- [ ] Plugin is compiled against the **same** TensorRT version as the engine â€” version mismatches cause silent crashes
+- [ ] Plugin `.so` is pinned and versioned in your artifact registry (not "latest" â€” a TensorRT upgrade requires plugin recompile)
 - [ ] Integration test: load engine + plugin in a fresh container and verify output matches reference
 
 **TensorRT Plugin: Complete C++ Boilerplate**
@@ -2840,7 +2842,7 @@ A TensorRT plugin has two components: the **plugin** (does the computation) and 
 
 using namespace nvinfer1;
 
-// ─── The Plugin ───
+// â”€â”€â”€ The Plugin â”€â”€â”€
 class MyQuantizedOp : public IPluginV2DynamicExt {
 public:
     MyQuantizedOp(float scale) : mScale(scale) {}
@@ -2851,13 +2853,13 @@ public:
         mScale = *reinterpret_cast<const float*>(d);
     }
 
-    // ── Shape inference ──
+    // â”€â”€ Shape inference â”€â”€
     DimsExprs getOutputDimensions(int outputIndex, const DimsExprs* inputs,
                                   int nbInputs, IExprBuilder& builder) noexcept override {
         return inputs[0];  // Output shape == input shape for element-wise ops
     }
 
-    // ── Precision/format support ──
+    // â”€â”€ Precision/format support â”€â”€
     bool supportsFormatCombination(int pos, const PluginTensorDesc* inOut,
                                     int nbInputs, int nbOutputs) noexcept override {
         // Support FP16 and INT8 (the quantized types we care about)
@@ -2865,7 +2867,7 @@ public:
             && inOut[pos].format == TensorFormat::kLINEAR;
     }
 
-    // ── The actual CUDA kernel launch ──
+    // â”€â”€ The actual CUDA kernel launch â”€â”€
     int enqueue(const PluginTensorDesc* inputDesc, const PluginTensorDesc* outputDesc,
                 const void* const* inputs, void* const* outputs,
                 void* workspace, cudaStream_t stream) noexcept override {
@@ -2878,13 +2880,13 @@ public:
         return 0;
     }
 
-    // ── Serialization (save plugin state into engine file) ──
+    // â”€â”€ Serialization (save plugin state into engine file) â”€â”€
     size_t getSerializationSize() const noexcept override { return sizeof(float); }
     void serialize(void* buffer) const noexcept override {
         *static_cast<float*>(buffer) = mScale;
     }
 
-    // ── Metadata ──
+    // â”€â”€ Metadata â”€â”€
     const char* getPluginType() const noexcept override { return "MyQuantizedOp"; }
     const char* getPluginVersion() const noexcept override { return "1"; }
     int getNbOutputs() const noexcept override { return 1; }
@@ -2895,7 +2897,7 @@ public:
     }
 
     // (Other required methods: configurePlugin, getWorkspaceSize, etc.
-    //  — return defaults for simple plugins)
+    //  â€” return defaults for simple plugins)
     void configurePlugin(const DynamicPluginTensorDesc* in, int nbInputs,
                          const DynamicPluginTensorDesc* out, int nbOutputs) noexcept override {}
     size_t getWorkspaceSize(const PluginTensorDesc* inputs, int nbInputs,
@@ -2916,7 +2918,7 @@ private:
     }
 };
 
-// ─── The Plugin Creator (factory) ───
+// â”€â”€â”€ The Plugin Creator (factory) â”€â”€â”€
 class MyQuantizedOpCreator : public IPluginCreator {
 public:
     const char* getPluginName() const noexcept override { return "MyQuantizedOp"; }
@@ -2945,7 +2947,7 @@ private:
     std::string mNamespace;
 };
 
-// ─── Register the plugin so TensorRT can find it ───
+// â”€â”€â”€ Register the plugin so TensorRT can find it â”€â”€â”€
 REGISTER_TENSORRT_PLUGIN(MyQuantizedOpCreator);
 ```
 
@@ -2965,12 +2967,12 @@ trtexec --onnx=model.onnx --plugins=libmyquantizedop.so --saveEngine=model.plan
 **Plugin deployment with Triton:** Custom plugins must be packaged with the engine and loaded by Triton at startup. Add the plugin .so file to your model repository and configure Triton to load it:
 ```
 model_repository/
-└── my_model/
-    ├── config.pbtxt
-    ├── 1/
-    │   └── model.plan
-    └── plugins/
-        └── libmycustomplugin.so
+â””â”€â”€ my_model/
+    â”œâ”€â”€ config.pbtxt
+    â”œâ”€â”€ 1/
+    â”‚   â””â”€â”€ model.plan
+    â””â”€â”€ plugins/
+        â””â”€â”€ libmycustomplugin.so
 ```
 
 > **The production lesson:** Before committing to a model architecture for TensorRT deployment, verify that all its ops are supported. Run a quick `trtexec --onnx=model.onnx` early in the development cycle. Discovering unsupported ops after training is expensive.
@@ -2983,7 +2985,7 @@ Like Chapter 20's three diagnostic scenarios for Qualcomm, here are the NVIDIA-s
 
 ### The 5 Most Common Errors (and Exact Fixes)
 
-Before diving into the deep diagnostics, here are the errors that hit beginners most often. These are ordered by frequency — search for the exact error string to find your fix:
+Before diving into the deep diagnostics, here are the errors that hit beginners most often. These are ordered by frequency â€” search for the exact error string to find your fix:
 
 **1. `Error: no NVIDIA GPU detected` or `nvidia-smi` fails**
 ```
@@ -3025,7 +3027,7 @@ Fix:      Re-export with a lower opset: torch.onnx.export(..., opset_version=17)
 **5. `Engine builds, outputs are all wrong / random`**
 ```
 Symptom:  Engine loads and runs without errors, but predictions are garbage
-Cause:    Almost always preprocessing mismatch — the inference preprocessing
+Cause:    Almost always preprocessing mismatch â€” the inference preprocessing
           differs from training preprocessing (different normalization, resize,
           channel order RGB vs BGR, or wrong input dtype)
 Fix:      Verify preprocessing is byte-for-byte identical to training.
@@ -3037,11 +3039,11 @@ Fix:      Verify preprocessing is byte-for-byte identical to training.
 
 ### Scenario A: "Engine Builds, but Output Is Wrong"
 
-This is the accuracy failure — the engine runs but produces incorrect predictions. Systematic diagnosis:
+This is the accuracy failure â€” the engine runs but produces incorrect predictions. Systematic diagnosis:
 
 **Step 1: Isolate where the error enters.**
 ```bash
-# Compare FP32 PyTorch → ONNXRuntime → TensorRT FP16 → TensorRT INT8
+# Compare FP32 PyTorch â†’ ONNXRuntime â†’ TensorRT FP16 â†’ TensorRT INT8
 polygraphy run model.onnx --onnxrt --trt --atol 1e-3 --rtol 1e-3
 ```
 
@@ -3059,10 +3061,10 @@ This is identical to the Qualcomm "input mismatch" scenario in Chapter 20.
 **Step 3: Check quantization scales.**
 - If using **explicit Q/DQ**: verify Q/DQ nodes have reasonable scale values (not 0, not infinity)
 - If using **implicit calibration**: verify the calibration cache corresponds to the same model and preprocessing
-- If calibration used non-representative data: re-calibrate with production-like data → **Calibration Mismatch** (failure pattern from Chapter 13)
+- If calibration used non-representative data: re-calibrate with production-like data â†’ **Calibration Mismatch** (failure pattern from Chapter 13)
 
 **Step 4: Check for outlier-induced resolution collapse.**
-Transformer activations with extreme outliers (Chapter 14) cause **Resolution Collapse** under INT8 — the scale is set by the outlier, crushing resolution for normal values. Fix: use SmoothQuant (Chapter 15) or switch to FP8.
+Transformer activations with extreme outliers (Chapter 14) cause **Resolution Collapse** under INT8 â€” the scale is set by the outlier, crushing resolution for normal values. Fix: use SmoothQuant (Chapter 15) or switch to FP8.
 
 > **Rule:** If INT8 accuracy drops >1% for CNNs or >0.5 perplexity for LLMs, suspect calibration or outliers before blaming TensorRT.
 
@@ -3070,7 +3072,7 @@ Transformer activations with extreme outliers (Chapter 14) cause **Resolution Co
 
 ### Scenario B: "Engine Builds, but It's Slower Than Expected"
 
-You expected 2× speedup from INT8, but got only 1.1×. Diagnosis:
+You expected 2Ã— speedup from INT8, but got only 1.1Ã—. Diagnosis:
 
 **Step 1: Are you actually using Tensor Cores?**
 ```bash
@@ -3081,7 +3083,7 @@ Check the profile output for:
 - High "Reformat" overhead (tensor layout conversions between layers)
 
 **Step 2: Is the workload memory-bound?**
-If batch=1 and your model is large, you are memory-bandwidth-bound, not compute-bound. INT8 compute throughput doesn't help — you need weight-only quantization (W4A16) to reduce memory traffic. This connects directly to the memory-vs-compute model from Chapter 16.
+If batch=1 and your model is large, you are memory-bandwidth-bound, not compute-bound. INT8 compute throughput doesn't help â€” you need weight-only quantization (W4A16) to reduce memory traffic. This connects directly to the memory-vs-compute model from Chapter 16.
 
 **Step 3: Is workspace too small?**
 Insufficient workspace forces TensorRT to fall back to slower kernel tactics:
@@ -3090,7 +3092,7 @@ config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 4 << 30)  # 4GB
 ```
 
 **Step 4: Are dynamic shapes causing suboptimal profile selection?**
-If your optimization profile has a wide min-max range (e.g., batch 1–256), TensorRT optimizes for the `opt` shape. Inputs far from `opt` may run suboptimally. Create multiple profiles for different operating points.
+If your optimization profile has a wide min-max range (e.g., batch 1â€“256), TensorRT optimizes for the `opt` shape. Inputs far from `opt` may run suboptimally. Create multiple profiles for different operating points.
 
 **Step 5: Are Tensor Core alignment requirements met?**
 Matrix dimensions that aren't multiples of 8 (INT8) or 16 (FP8) cause padding overhead. This is usually handled by TensorRT, but custom layers or unusual shapes can defeat alignment.
@@ -3103,15 +3105,15 @@ If `trtexec --dumpProfile` shows high "Reformat" time, follow this ordered playb
 ```bash
 # Available in: NGC tensorrt container
 trtexec --loadEngine=model.plan --dumpProfile --separateProfileRun 2>&1 | grep -i "reformat"
-# Each reformat line shows: source format → destination format, and time in ms
+# Each reformat line shows: source format â†’ destination format, and time in ms
 ```
 
 **2. Understand the causes.**
 
 | Cause | Example | Fix |
 |-------|---------|-----|
-| **Mixed precision boundaries** | FP16 layer → INT8 layer | Reduce precision crossings: keep contiguous blocks in the same precision via ModelOpt layer-level config |
-| **Layout mismatch** | NCHW layer → NHWC layer | Re-export ONNX with consistent layout; or accept the cost if TensorRT chose NHWC for Tensor Core efficiency |
+| **Mixed precision boundaries** | FP16 layer â†’ INT8 layer | Reduce precision crossings: keep contiguous blocks in the same precision via ModelOpt layer-level config |
+| **Layout mismatch** | NCHW layer â†’ NHWC layer | Re-export ONNX with consistent layout; or accept the cost if TensorRT chose NHWC for Tensor Core efficiency |
 | **Non-fused Q/DQ** | Q/DQ nodes not absorbed into compute kernel | Check that Q/DQ nodes are placed on fusable boundaries (Conv/MatMul inputs/outputs). Misplaced Q/DQ = extra reformat |
 | **Plugin output format** | Plugin outputs NCHW but next layer expects NHWC | Make plugin output match the expected layout (implement `supportsFormatCombination` correctly) |
 
@@ -3159,10 +3161,10 @@ config.add_optimization_profile(profile)
 Without profiles, TensorRT assumes static shapes and errors on dynamic inputs.
 
 **4. Calibration data not representative:**
-Non-representative calibration data → wrong scales → **Calibration Mismatch** (Chapter 13). Use production-like data.
+Non-representative calibration data â†’ wrong scales â†’ **Calibration Mismatch** (Chapter 13). Use production-like data.
 
 **5. FP16 accumulation causing NaN:**
-Some models produce intermediate values that overflow FP16 range (±65504). Fix: keep specific layers in FP32, or use BF16 (wider range) if available.
+Some models produce intermediate values that overflow FP16 range (Â±65504). Fix: keep specific layers in FP32, or use BF16 (wider range) if available.
 
 **6. Workspace memory too small:**
 ```python
@@ -3190,7 +3192,7 @@ If a model is not hitting expected throughput, profile individual kernels:
 ```bash
 trtexec --loadEngine=model_int8.plan --dumpProfile --separateProfileRun
 ```
-This shows per-layer timing. Look for layers that are disproportionately slow — they may be running in FP32 fallback.
+This shows per-layer timing. Look for layers that are disproportionately slow â€” they may be running in FP32 fallback.
 
 **3. Use CUDA graphs:**
 For latency-sensitive workloads, CUDA graphs capture the entire inference as a single GPU submission:
@@ -3207,7 +3209,7 @@ graph.replay()
 **4. Optimize batch size:**
 INT8 models have higher throughput, which means they can efficiently process larger batches. Profile throughput vs. latency at different batch sizes to find the sweet spot:
 
-> **Illustrative numbers** — measured on a specific GPU SKU, TensorRT version, and model. Your results will vary with hardware, model architecture, and TRT version. Always measure on your own setup.
+> **Illustrative numbers** â€” measured on a specific GPU SKU, TensorRT version, and model. Your results will vary with hardware, model architecture, and TRT version. Always measure on your own setup.
 
 | Batch Size | Latency (ms) | Throughput (img/s) |
 |-----------|-------------|-------------------|
@@ -3219,7 +3221,7 @@ INT8 models have higher throughput, which means they can efficiently process lar
 
 > **Measurement knobs:** batch size, sequence length (for LLMs), GPU SKU, TRT/TRT-LLM version. Change any one and the numbers change.
 
-Throughput plateaus around batch 64–128 for INT8. Beyond that, you are limited by memory bandwidth.
+Throughput plateaus around batch 64â€“128 for INT8. Beyond that, you are limited by memory bandwidth.
 
 **5. Multi-instance GPU (MIG) on A100/H100:**
 For serving multiple models, use MIG to partition the GPU:
@@ -3255,7 +3257,7 @@ This is the compounding effect: INT8 quantization enables more aggressive layer 
 
 ---
 
-## Toolbox — Everything You Need in One Place
+## Toolbox â€” Everything You Need in One Place
 
 | Tool | Purpose | Key Command |
 |------|---------|-------------|
@@ -3271,9 +3273,9 @@ This is the compounding effect: INT8 quantization enables more aggressive layer 
 | **Triton** | Model serving | `tritonserver --model-repository=/models` |
 
 **Canonical references:**
-- TensorRT Support Matrix — the definitive source for driver/CUDA/cuDNN/GPU compatibility
-- TensorRT Quantization Documentation — precision support and quantized type details
-- TRT-LLM GitHub — quantization examples and model support matrix
+- TensorRT Support Matrix â€” the definitive source for driver/CUDA/cuDNN/GPU compatibility
+- TensorRT Quantization Documentation â€” precision support and quantized type details
+- TRT-LLM GitHub â€” quantization examples and model support matrix
 
 ---
 
@@ -3284,9 +3286,9 @@ This is the compounding effect: INT8 quantization enables more aggressive layer 
 | Strategy | When to Use | Performance Cost | Operational Complexity | File Size Impact |
 |----------|-------------|-----------------|----------------------|-----------------|
 | **Rebuild per GPU** (default) | Homogeneous fleet, CI/CD can build per target | None (optimal) | Must maintain build pipelines per GPU | Normal |
-| **`--hardwareCompatibilityLevel=ampere+`** | Mixed Ampere/Ada/Hopper fleet | 5–15% slower (generic kernels) | Single build, deploy anywhere ≥ Ampere | ~Same |
-| **`--versionCompatible`** | Rolling TensorRT upgrades without rebuild | 0–5% (version-specific optimizations lost) | Requires trusted-plan governance | Larger (10–30%) |
-| **Both flags combined** | Maximum flexibility (fleet heterogeneity + rolling upgrades) | Compounded: 5–20% | Requires trusted plans + version tracking | Largest |
+| **`--hardwareCompatibilityLevel=ampere+`** | Mixed Ampere/Ada/Hopper fleet | 5â€“15% slower (generic kernels) | Single build, deploy anywhere â‰¥ Ampere | ~Same |
+| **`--versionCompatible`** | Rolling TensorRT upgrades without rebuild | 0â€“5% (version-specific optimizations lost) | Requires trusted-plan governance | Larger (10â€“30%) |
+| **Both flags combined** | Maximum flexibility (fleet heterogeneity + rolling upgrades) | Compounded: 5â€“20% | Requires trusted plans + version tracking | Largest |
 
 > **Rule:** Start with "rebuild per GPU." Only add portability flags when your fleet or upgrade cadence demands it, and always benchmark the performance cost on your target workload.
 
@@ -3295,16 +3297,16 @@ This is the compounding effect: INT8 quantization enables more aggressive layer 
 Treat calibration cache + timing cache as **build artifacts** alongside your `.plan` files:
 
 ```bash
-# CI pipeline: build → cache → store → deploy
+# CI pipeline: build â†’ cache â†’ store â†’ deploy
 trtexec --onnx=model.onnx --int8 --fp16 \
     --calib=calibration.cache \
     --timingCacheFile=timing.cache \
     --saveEngine=model.plan
 
 # Store as CI artifacts:
-# - model.plan            → deploy to Triton model repository
-# - calibration.cache     → reuse across builds for same model
-# - timing.cache          → reuse across builds on same GPU type
+# - model.plan            â†’ deploy to Triton model repository
+# - calibration.cache     â†’ reuse across builds for same model
+# - timing.cache          â†’ reuse across builds on same GPU type
 ```
 
 **Rebuild triggers:** Any of these should trigger a fresh engine build in CI:
@@ -3319,15 +3321,15 @@ trtexec --onnx=model.onnx --int8 --fp16 \
 
 TensorRT build is expensive. Cache aggressively:
 
-1. **Calibration cache** — stores computed INT8 scales. Reused across engine builds for the same model.
-2. **Tactic timing cache** — stores kernel auto-tuning results. Dramatically speeds up rebuilds on the same GPU.
+1. **Calibration cache** â€” stores computed INT8 scales. Reused across engine builds for the same model.
+2. **Tactic timing cache** â€” stores kernel auto-tuning results. Dramatically speeds up rebuilds on the same GPU.
 
 ```bash
 # Build with timing cache
 trtexec --onnx=model.onnx --int8 --fp16 \
     --timingCacheFile=timing.cache --saveEngine=model.plan
 
-# Rebuild (reuses timing cache — much faster)
+# Rebuild (reuses timing cache â€” much faster)
 trtexec --onnx=model_v2.onnx --int8 --fp16 \
     --timingCacheFile=timing.cache --saveEngine=model_v2.plan
 ```
@@ -3352,7 +3354,7 @@ For heterogeneous GPU fleets:
 trtexec --onnx=model.onnx --saveEngine=model.plan --hardwareCompatibilityLevel=ampere+
 ```
 
-This produces an engine that runs on any Ampere or newer GPU, but uses generic kernels instead of architecture-specific optimized ones. Expect 5–15% performance cost.
+This produces an engine that runs on any Ampere or newer GPU, but uses generic kernels instead of architecture-specific optimized ones. Expect 5â€“15% performance cost.
 
 ### Weight Stripping and Refit
 
@@ -3372,13 +3374,13 @@ This is useful for CI/CD pipelines where you want to distribute engine structure
 - [ ] You can read `trtexec --dumpProfile` output and identify bottleneck layers
 - [ ] You can diagnose and explain reformat overhead (cause + fix)
 - [ ] You have a portability strategy for your fleet (rebuild per GPU vs. hardware compatibility)
-- [ ] Unsupported ops are resolved via the escalation ladder (rewrite → surgery → plugin)
+- [ ] Unsupported ops are resolved via the escalation ladder (rewrite â†’ surgery â†’ plugin)
 - [ ] For LLMs: you can select the right recipe for your workload phase (prefill vs. decode vs. long-context)
 - [ ] Engine lifecycle is integrated into CI/CD (calibration cache + timing cache as artifacts)
 
 ---
 
-# ── EXPERT TIER ──
+# â”€â”€ EXPERT TIER â”€â”€
 
 > **Expert Goals:** SLO-driven serving + fleet heterogeneity + deep diagnosis. After this tier, you can set SLOs (TTFT, inter-token latency, P99), pick batching policy, and maintain reproducibility across container upgrades and GPU fleets.
 >
@@ -3389,10 +3391,10 @@ This is useful for CI/CD pipelines where you want to distribute engine structure
 ### CNN Deployment Checklist
 
 - [ ] Verify all ONNX ops supported (`trtexec --onnx=model.onnx --verbose`)
-- [ ] Build with FP16 first — establish baseline performance and accuracy
+- [ ] Build with FP16 first â€” establish baseline performance and accuracy
 - [ ] Enable INT8 with entropy calibration using production-representative data
 - [ ] Use explicit Q/DQ (ModelOpt PTQ) instead of implicit calibration
-- [ ] Compare FP32 → FP16 → INT8 accuracy (`polygraphy run --onnxrt --trt`)
+- [ ] Compare FP32 â†’ FP16 â†’ INT8 accuracy (`polygraphy run --onnxrt --trt`)
 - [ ] Profile per-layer timing (`trtexec --dumpProfile --separateProfileRun`)
 - [ ] Check for silent FP16 fallback in INT8 layers
 - [ ] Set dynamic shape profiles matching production batch sizes
@@ -3419,30 +3421,30 @@ This is useful for CI/CD pipelines where you want to distribute engine structure
 
 Production serving requires hitting specific Service Level Objectives. The tuning process differs for CNNs and LLMs:
 
-**CNN SLO tuning — measure → change one knob → remeasure:**
+**CNN SLO tuning â€” measure â†’ change one knob â†’ remeasure:**
 
 ```
 1. Baseline:     trtexec --loadEngine=model.plan --batch=32 --iterations=1000
-                 → record: P50 latency, P99 latency, throughput
+                 â†’ record: P50 latency, P99 latency, throughput
 
 2. Knob: Triton batching window
-   max_queue_delay_microseconds: 1000 → 2000 → 5000
-   → P99 latency vs throughput tradeoff
+   max_queue_delay_microseconds: 1000 â†’ 2000 â†’ 5000
+   â†’ P99 latency vs throughput tradeoff
 
 3. Knob: preferred_batch_size
-   [8, 16] → [16, 32] → [32, 64]
-   → larger = higher throughput, higher P99
+   [8, 16] â†’ [16, 32] â†’ [32, 64]
+   â†’ larger = higher throughput, higher P99
 
 4. Knob: instance_group count
-   count: 1 → 2 → 4    (multiple engine instances per GPU)
-   → more instances = more concurrent requests, more GPU memory
+   count: 1 â†’ 2 â†’ 4    (multiple engine instances per GPU)
+   â†’ more instances = more concurrent requests, more GPU memory
 
 5. Knob: CUDA graphs (reduces kernel launch overhead)
    parameters { key: "enable_cuda_graph" value: { string_value: "true" } }
-   → reduces P99 tail latency
+   â†’ reduces P99 tail latency
 ```
 
-**LLM SLO tuning — different knobs, different metrics:**
+**LLM SLO tuning â€” different knobs, different metrics:**
 
 | Knob | Affects | Trade-off |
 |------|---------|-----------|
@@ -3455,7 +3457,7 @@ Production serving requires hitting specific Service Level Objectives. The tunin
 > **SLO targets to set (LLM):**
 > - **TTFT (Time to First Token):** typically <500ms for interactive, <2s for batch
 > - **Inter-token latency:** typically <50ms for chat, <100ms for batch
-> - **P99 latency:** set at 2–3× median; alert if exceeded
+> - **P99 latency:** set at 2â€“3Ã— median; alert if exceeded
 > - **Throughput:** tokens/second/GPU as the fleet-level metric
 
 ### Observability Must-Haves (Expert)
@@ -3482,7 +3484,7 @@ The earlier multi-GPU section stated facts. Here are the deployment rules:
 
 **Tensor Parallelism (TP) constraints:**
 1. TP degree must evenly divide the number of attention heads. For LLaMA-2-70B (64 heads): TP=2, 4, 8 work. TP=3, 5, 6 do not.
-2. NVLink topology is mandatory for TP efficiency. NVLink provides ~900 GB/s (H100 SXM); PCIe provides ~64 GB/s. TP across PCIe-only connections is 10–15× slower — effectively unusable for real-time serving.
+2. NVLink topology is mandatory for TP efficiency. NVLink provides ~900 GB/s (H100 SXM); PCIe provides ~64 GB/s. TP across PCIe-only connections is 10â€“15Ã— slower â€” effectively unusable for real-time serving.
 3. All GPUs in a TP group must be the same architecture and SKU. Mixing A100 and H100 in one TP group is not supported.
 
 **Pipeline Parallelism (PP) rules:**
@@ -3496,7 +3498,7 @@ The earlier multi-GPU section stated facts. Here are the deployment rules:
 |-----------|---------------------------|----------|
 | 7B | 1 GPU | No parallelism needed (FP8: ~7GB) |
 | 13B | 1 GPU | W4A16: fits in ~7GB; FP8: ~13GB, tight but works |
-| 70B | 2–4 GPUs | TP=2 (FP8) or TP=4 (FP16); prefer TP=2 with FP8 |
+| 70B | 2â€“4 GPUs | TP=2 (FP8) or TP=4 (FP16); prefer TP=2 with FP8 |
 | 70B | 8 GPUs | TP=8 for minimum latency; or TP=4 for cost efficiency with 2 replicas |
 | 405B | 8 GPUs | TP=8, PP=2 across 2 nodes; or TP=8 with NVFP4 on Blackwell |
 
@@ -3504,13 +3506,13 @@ The earlier multi-GPU section stated facts. Here are the deployment rules:
 
 **Triage path:**
 
-1. **Check topology:** `nvidia-smi topo -m` — verify NVLink connections. If you see `PHB` (PCIe Host Bridge) or `SYS` between GPUs instead of `NV#`, you're running TP over PCIe. Fix: place TP group on NVLink-connected GPUs.
+1. **Check topology:** `nvidia-smi topo -m` â€” verify NVLink connections. If you see `PHB` (PCIe Host Bridge) or `SYS` between GPUs instead of `NV#`, you're running TP over PCIe. Fix: place TP group on NVLink-connected GPUs.
 
-2. **Check NCCL config:** Set `NCCL_DEBUG=INFO` and look for "Using network PCIe" — this confirms PCIe-only transport. For NVLink, you should see "Using network IB" or "NVLink."
+2. **Check NCCL config:** Set `NCCL_DEBUG=INFO` and look for "Using network PCIe" â€” this confirms PCIe-only transport. For NVLink, you should see "Using network IB" or "NVLink."
 
 3. **Check PCIe saturation:** If the GPUs are on different NUMA nodes, PCIe traffic crosses the CPU socket boundary, adding latency. Use `numactl --hardware` to verify GPU-to-CPU affinity.
 
-4. **Check micro-batching mismatch:** If `max_batch_size` is too small for the TP degree, each GPU gets very little work per step, and communication overhead dominates. Rule: batch size per GPU should be ≥4 for TP to be worthwhile.
+4. **Check micro-batching mismatch:** If `max_batch_size` is too small for the TP degree, each GPU gets very little work per step, and communication overhead dominates. Rule: batch size per GPU should be â‰¥4 for TP to be worthwhile.
 
 ### Trusted Engine Governance (Expert)
 
@@ -3519,10 +3521,10 @@ Version-compatible engines use TensorRT's "trusted plan" mechanism. In productio
 **The problem:** A version-compatible engine can run on newer TensorRT versions without rebuild. But this also means a *malicious or corrupted* `.plan` file could be loaded by your inference server. The trusted plan mechanism exists to prevent this.
 
 **Governance rules:**
-1. **Build engines only in CI/CD** — never accept manually-built engines for production
-2. **Sign/hash `.plan` files** — store SHA-256 hashes of approved engines; verify before loading
-3. **Store approved engines in a versioned artifact registry** (e.g., S3, GCS, or Artifactory) — not on local disks
-4. **Triton model repository should be read-only** — mount as `:ro` in Docker to prevent runtime engine replacement
+1. **Build engines only in CI/CD** â€” never accept manually-built engines for production
+2. **Sign/hash `.plan` files** â€” store SHA-256 hashes of approved engines; verify before loading
+3. **Store approved engines in a versioned artifact registry** (e.g., S3, GCS, or Artifactory) â€” not on local disks
+4. **Triton model repository should be read-only** â€” mount as `:ro` in Docker to prevent runtime engine replacement
 5. **Audit trail:** log which engine version is loaded at Triton startup, with container version and GPU info
 
 ```bash
@@ -3539,16 +3541,16 @@ sha256sum -c model.plan.sha256
 For any performance or accuracy bug, attach these three artifacts to the investigation:
 
 ```
-1. layer_info.json    — per-layer kernel selection, precision, format, timing
-   → trtexec --onnx=model.onnx --int8 --fp16 \
+1. layer_info.json    â€” per-layer kernel selection, precision, format, timing
+   â†’ trtexec --onnx=model.onnx --int8 --fp16 \
        --exportLayerInfo=layer_info.json --profilingVerbosity=detailed
 
-2. nsight_trace.qdrep — Nsight Systems trace (GPU timeline, kernel launches, memory copies)
-   → nsys profile --trace=cuda,nvtx -o nsight_trace \
+2. nsight_trace.qdrep â€” Nsight Systems trace (GPU timeline, kernel launches, memory copies)
+   â†’ nsys profile --trace=cuda,nvtx -o nsight_trace \
        trtexec --loadEngine=model.plan --batch=32 --iterations=100
 
-3. polygraphy_debug/   — Polygraphy debug/bisect output (which layer introduced the error)
-   → polygraphy debug reduce model.onnx --mode=bisect \
+3. polygraphy_debug/   â€” Polygraphy debug/bisect output (which layer introduced the error)
+   â†’ polygraphy debug reduce model.onnx --mode=bisect \
        --check polygraphy run polygraphy_debug/reduced.onnx --trt --atol 1e-3
 ```
 
@@ -3573,8 +3575,8 @@ Before declaring a model production-ready, verify every item:
 - [ ] **Engine built in production container:** Same NGC image tag for build and deploy
 - [ ] **Container version pinned:** No `:latest` tags; explicit `nvcr.io/nvidia/tensorrt:24.05-py3`
 - [ ] **Explicit Q/DQ nodes verified:** Inspected in Netron or onnx-graphsurgeon (no implicit calibration in production)
-- [ ] **`trtexec` confirms target precision:** INT8/FP8 kernels executing (no silent FP16 fallback — check `--dumpProfile`)
-- [ ] **Polygraphy correctness gate passed:** Level 1 (ONNX→TRT FP16) and Level 2 (FP16→INT8) both pass
+- [ ] **`trtexec` confirms target precision:** INT8/FP8 kernels executing (no silent FP16 fallback â€” check `--dumpProfile`)
+- [ ] **Polygraphy correctness gate passed:** Level 1 (ONNXâ†’TRT FP16) and Level 2 (FP16â†’INT8) both pass
 - [ ] **Task metric evaluated:** Top-1 / mAP / perplexity acceptable (not just numerical diff)
 - [ ] **Timing cache saved:** `--timingCacheFile` stored as CI artifact for reproducible rebuilds
 - [ ] **Calibration cache saved:** `calibration.cache` archived alongside the engine
@@ -3588,14 +3590,14 @@ Before declaring a model production-ready, verify every item:
 
 ## Consolidation: The Life of a Quantized Tensor on NVIDIA
 
-This chapter completes the "deployment stack" arc that began with Chapter 20 (Qualcomm). Where Qualcomm targets the edge, NVIDIA targets the data center — but the quantization principles from earlier chapters apply identically. Here is how they manifest in the NVIDIA stack:
+This chapter completes the "deployment stack" arc that began with Chapter 20 (Qualcomm). Where Qualcomm targets the edge, NVIDIA targets the data center â€” but the quantization principles from earlier chapters apply identically. Here is how they manifest in the NVIDIA stack:
 
 ### The Pipeline
 
-1. **ModelOpt** quantizes your model (PTQ or QAT) and exports quantized ONNX with explicit Q/DQ nodes — or produces quantized checkpoints for TRT-LLM.
+1. **ModelOpt** quantizes your model (PTQ or QAT) and exports quantized ONNX with explicit Q/DQ nodes â€” or produces quantized checkpoints for TRT-LLM.
 2. **TensorRT** compiles the quantized model into a GPU-specific engine, auto-tuning kernels and fusing Q/DQ operations into compute kernels.
 3. **TensorRT-LLM** extends this for LLMs with KV cache management, paged attention, in-flight batching, and the full quantization recipe matrix (W4A16/W8A8/FP8/FP4).
-4. **Triton** serves the compiled engine in production — dynamic batching for CNNs, decoupled streaming for LLMs.
+4. **Triton** serves the compiled engine in production â€” dynamic batching for CNNs, decoupled streaming for LLMs.
 5. **cuDNN/cuBLAS** provide the low-level INT8/FP8 Tensor Core kernels that execute the "Life of a Tensor" (Chapter 4) at hardware speed.
 
 ### Canonical Failure Patterns on NVIDIA
@@ -3613,13 +3615,14 @@ Every failure pattern from the book's theory chapters has a concrete manifestati
 
 ### Critical Success Factors
 
-- **Choose the right precision for your GPU** — INT8 for Turing/Ampere, FP8 for Hopper+, FP4 for Blackwell.
-- **Use explicit Q/DQ** — implicit quantization is deprecated; explicit is portable, reproducible, and future-proof.
-- **Calibrate with representative data** — bad calibration = bad accuracy (Chapter 9 applies directly).
-- **Build engines on the target GPU** — engines are GPU-specific by default. Use version/hardware compatibility only when necessary.
-- **Profile, profile, profile** — use trtexec, Polygraphy, and Nsight to find bottlenecks and verify correctness.
-- **Use NGC containers** — build and deploy in the same container to avoid driver/CUDA/cuDNN mismatches.
+- **Choose the right precision for your GPU** â€” INT8 for Turing/Ampere, FP8 for Hopper+, FP4 for Blackwell.
+- **Use explicit Q/DQ** â€” implicit quantization is deprecated; explicit is portable, reproducible, and future-proof.
+- **Calibrate with representative data** â€” bad calibration = bad accuracy (Chapter 9 applies directly).
+- **Build engines on the target GPU** â€” engines are GPU-specific by default. Use version/hardware compatibility only when necessary.
+- **Profile, profile, profile** â€” use trtexec, Polygraphy, and Nsight to find bottlenecks and verify correctness.
+- **Use NGC containers** â€” build and deploy in the same container to avoid driver/CUDA/cuDNN mismatches.
 
-When the pipeline is working correctly, INT8 models on Tensor Cores achieve 1.5–2× throughput improvement over FP16, and FP8 on Hopper achieves the same speedup with less effort. For data-center inference at scale — serving millions of requests per hour — this stack is the standard.
+When the pipeline is working correctly, INT8 models on Tensor Cores achieve 1.5â€“2Ã— throughput improvement over FP16, and FP8 on Hopper achieves the same speedup with less effort. For data-center inference at scale â€” serving millions of requests per hour â€” this stack is the standard.
 
 > In the NVIDIA stack, the "Life of a Tensor" is a series of fusions; the goal of quantization is to ensure those fusions never break.
+
