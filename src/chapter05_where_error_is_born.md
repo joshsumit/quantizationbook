@@ -1,5 +1,7 @@
 # Chapter 5: Where Error Is Born
 
+In this chapter, we track errors produced when quantizing weights and activations.
+
 ## Three Kinds of Error
 
 When a real value is quantized, something is lost. But not all losses are the same. Quantization introduces three distinct types of error — each with a different cause, a different magnitude, and a different remedy. Treating them as interchangeable leads to misdiagnosis. This chapter defines each one precisely.
@@ -11,6 +13,8 @@ When a real value is quantized, something is lost. But not all losses are the sa
 Rounding error is the simplest form of quantization error. It occurs when a real value falls between two adjacent grid points and is snapped to the nearest one.
 
 Consider a range [-1.0, 1.0] quantized to int8 with 256 levels. The step size (Chapter 2) is:
+
+To see exactly how this distortion happens, we quantify it:
 
 $$S = \frac{2.0}{255} \approx 0.00784$$
 
@@ -186,3 +190,9 @@ Quantization error is not one thing. It is three things — rounding, clipping, 
 Whenever accuracy degrades in a quantized model, the first question is: is the problem rounding (step size too large), clipping (range too narrow), or representation (grid shape mismatched to data shape)? The answer determines what to fix and what fixing it will cost.
 
 *In Appendix B, these three error types will appear in a single model — you'll compute each one numerically and see which layers are limited by rounding, which by clipping, and how that drives the overall accuracy drop.*
+
+**Failure Signals**
+
+- Sudden saturation at boundary values
+- Layer outputs become noisy after quantization
+- Accuracy drops without obvious architecture changes

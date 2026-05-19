@@ -1,5 +1,7 @@
 # Chapter 14: Why Transformers Break Quantization
 
+In this chapter, we quantize transformer activations and show where that fails.
+
 ## A Different Failure Regime
 
 Everything in Chapters 1–13 works well for convolutional neural networks and simple feedforward architectures. Models like ResNet-50 quantize to int8 with PTQ and lose less than 1% accuracy. The weight distributions are compact, the activation ranges are bounded, and the standard quantization machinery handles them cleanly.
@@ -29,6 +31,8 @@ Outliers are especially common in activations immediately after LayerNorm-projec
 Per-tensor quantization assigns a single scale to the entire activation tensor. The scale must accommodate the maximum value in the tensor — including the outlier channels.
 
 Consider the layer described above. Under per-tensor int8 quantization:
+
+To see exactly how this collapse happens, we quantify it:
 
 $$S = \frac{2 \times 60.0}{255} = \frac{120.0}{255} \approx 0.47$$
 
@@ -118,3 +122,9 @@ Transformers break standard quantization because they produce activation distrib
 The core assumption that breaks: standard affine uniform quantization assumes a single scale can cover the tensor while preserving useful resolution for the bulk of values. Transformers violate this because the bulk and the extremes are structurally separated — by channel and by token.
 
 The question is no longer "what scale should we use?" It is: how do we transform the distributions to be quantizable before applying the standard machinery? We need distribution-shaping or granularity changes (channel × token) before the standard quantization tools from Chapters 1–13 can work.
+
+**Failure Signals**
+
+- Attention quality drops sharply under quantization
+- Outputs become incoherent at longer contexts
+- Extreme sensitivity to outlier channels

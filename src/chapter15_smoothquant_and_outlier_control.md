@@ -1,5 +1,10 @@
 # Chapter 15: SmoothQuant and Outlier Control
 
+Naive activation quantization fails here because outliers force severe accuracy loss.
+This chapter shows how we fix that by redistributing range before quantization.
+
+In this chapter, we quantize transformer activations and compensating weights.
+
 ## Redistributing Difficulty
 
 Transformer activations contain channel-level outliers that destroy per-tensor quantization resolution. The obvious responses — widen the range (lose resolution), clip the outliers (lose the outlier values), or use per-channel activation quantization (doesn't handle token-level variation) — are all inadequate.
@@ -55,6 +60,8 @@ SmoothQuant exploits this asymmetry: shrink the activations where they are extre
 ## The Mathematical Transformation
 
 For a linear layer computing \\(Y = XW\\), SmoothQuant inserts a per-channel scaling factor \\(s\\) between the input and the weights:
+
+To see exactly how this transformation preserves outputs while changing quantization behavior, we quantify it:
 
 $$Y = X W = (X \cdot \text{diag}(s)^{-1}) \cdot (\text{diag}(s) \cdot W)$$
 

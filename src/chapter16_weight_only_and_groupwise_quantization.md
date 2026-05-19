@@ -1,8 +1,11 @@
 # Chapter 16: Weight-Only and Group-Wise Quantization
 
+In this chapter, we quantize model weights while keeping activations in higher precision.
+
 ## The Memory Problem Returns
 
 Inference is memory-bandwidth-bound: the bottleneck is loading parameters from memory, not computing with them. SmoothQuant addresses activation quantization — making activations survive int8 by redistributing outliers. But for the largest language models, a different approach has become dominant: quantize only the weights and leave activations in higher precision entirely.
+(Weight-only means only weights are quantized; activations remain float during compute.)
 
 The reasoning is economic. A 70-billion-parameter model in float16 occupies 140 GB. At a memory bandwidth of 900 GB/s, loading the full model for one token takes ~156 milliseconds. At int4, the model is 35 GB — loading takes ~39 milliseconds, a 4× improvement.
 
@@ -66,7 +69,9 @@ Per-channel quantization (one scale per output row) helps — each row gets its 
 
 ## Group-Wise Quantization
 
-Group-wise quantization assigns a separate scale (and optionally zero-point) to each *group* of consecutive weights along a dimension. Instead of one scale per tensor or one scale per channel, there is one scale per group of \\(g\\) weights.
+Group-wise quantization assigns a separate scale (and optionally zero-point) to each *group* of consecutive weights along a dimension.
+(Group-wise means splitting weights into small groups and giving each group its own scale.)
+Instead of one scale per tensor or one scale per channel, there is one scale per group of \\(g\\) weights.
 
 Consider a weight matrix of shape [4096, 4096] — 16.7 million weights.
 

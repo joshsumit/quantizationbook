@@ -1,18 +1,28 @@
 # Chapter 17: GPTQ, AWQ, and Offline Calibration
 
+So far, we have seen: quantization = mapping values to lower precision with controlled error.
+Naive quantization fails here because basic rounding at low bit-widths causes large accuracy loss.
+This section shows how we fix that with better offline weight assignment.
+
+In this chapter, we quantize weights in weight-only pipelines.
+
 ## Better Than Rounding
 
 Weight-only quantization with group-wise scales determines the ranges. But a question remains: once the scales are determined, how is each weight value mapped to its integer?
 
 The naive answer is rounding — each weight independently rounds to the nearest grid point. This is what PTQ does (Chapter 10). For int8, naive rounding works reasonably well because 256 levels provide sufficient resolution for most weight distributions. For int4 — 16 levels — the rounding error per weight is much larger, and the cumulative effect across millions of weights can be severe.
 
-GPTQ and AWQ are algorithms that do better than naive rounding. They choose integer values for each weight in a way that minimizes the effect of quantization error on the layer's output — taking into account how weights interact with each other and with the data.
+GPTQ and AWQ are algorithms that do better than naive rounding.
+These are advanced methods that improve basic rounding (explained earlier).
+They choose integer values for each weight in a way that minimizes the effect of quantization error on the layer's output — taking into account how weights interact with each other and with the data.
 
 ---
 
 ## Why Naive Rounding Is Suboptimal
 
 When a single weight is rounded to the nearest grid point, the rounding error for that weight is minimized. But weights do not operate in isolation. They participate in a matrix multiplication:
+
+To see exactly where this output error comes from, we quantify it:
 
 $$y = Wx$$
 

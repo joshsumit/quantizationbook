@@ -1,5 +1,7 @@
 # Chapter 10: Post-Training Quantization
 
+In this chapter, we quantize weights and activations after training is complete.
+
 ## The Simplest Strategy
 
 The full machinery is now in place: grids, scales, boundaries, requantization, fusion, and calibration. The first complete quantization strategy is *post-training quantization* (PTQ) — quantizing an already-trained model without any retraining.
@@ -163,3 +165,9 @@ When these signals appear, the next step is not better calibration. It is a fund
 PTQ is passive: it observes the model's existing distributions and maps them to integers. When distributions are compact and well-behaved, PTQ is the right tool — cheap, effective, and sufficient. When distributions are hostile — high dynamic range, extreme outliers, large per-channel variance — PTQ hits a structural ceiling that no calibration improvement can overcome.
 
 The diagnostic question after PTQ is: is the remaining accuracy loss caused by range estimation (fixable with better calibration) or by the distribution shape itself (not fixable without retraining)? If the loss is Tail Clipping, calibration or observer choice can help. If the loss is Distribution Mismatch or Resolution Collapse, calibration won't fix it — you need distribution shaping or retraining.
+
+**Failure Signals**
+
+- Accuracy drops sharply after conversion despite stable float baseline
+- Many values clamp to min/max codes
+- Small set of layers dominates sensitivity analysis

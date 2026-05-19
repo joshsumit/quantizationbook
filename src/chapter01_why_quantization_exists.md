@@ -1,8 +1,19 @@
 # Chapter 1: Why Quantization Exists
 
+Models are often too large to fit in available GPU memory.
+Latency is dominated by moving weights from memory, not by math.
+In long-context generation, KV-cache memory keeps growing with token count.
+Quantization is the practical trade: accept some accuracy loss to cut memory and speed up inference.
+Concrete anchor: a 7B model is about 28GB in FP32 and about 7GB in INT8.
+This chapter explains only why that trade is unavoidable in deployment.
+
 ## What Quantization Is
 
-Quantization is the process of mapping continuous floating-point values to a finite, discrete set of integer values using a mathematically derived scale factor. This hardware-focused optimization enables deep learning models to execute significantly faster and operate within tighter resource constraints when deployed on physical hardware layers. 
+In this chapter, we focus on quantizing model parameters for inference economics.
+
+Quantization is the process of mapping continuous floating-point values to a finite, discrete set of integer values using a mathematically derived scale factor.
+(Scale is the fixed multiplier that maps integers back to real values.)
+This hardware-focused optimization enables deep learning models to execute significantly faster and operate within tighter resource constraints when deployed on physical hardware layers.
 
 During standard model training and development, networks operate in the high-precision environment of 32-bit floating-point precision (\\(\text{Float32}\\)), which provides a massive resolution of over four billion representable levels. While this near-infinite resolution is structurally necessary to capture the microscopic numerical gradients required during backpropagation, it forces a massive memory and computational burden during model deployment.
 
@@ -21,6 +32,8 @@ The primary operational bottleneck stems from the physical challenge of moving d
 The math behind a 7-billion-parameter model stored in unquantized \\(\text{Float32}\\) precision highlights this constraint. This single model requires 28 gigabytes (GB) of physical memory storage. During deployment, the network operates in a weight-streaming regime, meaning every single one of those 7 billion parameters must be fetched from off-chip memory chips and loaded into the processor core during every single forward generation token step. 
 
 If the underlying hardware features a maximum memory bandwidth of 900 GB/s, the time required simply to transfer the full model footprint across the physical bus evaluates as:
+
+To see exactly where latency comes from, we quantify it:
 
 \\[\text{Transfer Time} = \frac{28\text{ GB}}{900\text{ GB/s}} \approx 0.0311\text{ seconds}\\]
 

@@ -1,5 +1,7 @@
 # Chapter 11: Quantization-Aware Training
 
+In this chapter, we quantize weights and activations during training-time simulation.
+
 ## When Passive Fails
 
 PTQ has a structural ceiling: when weight and activation distributions are hostile to quantization, no post-hoc calibration can fix them. The weights were never trained to survive quantization. They produce ranges that int8 cannot represent without severe error.
@@ -21,6 +23,8 @@ A fake quantization node does the following:
 The output is still floating-point, but it has been rounded to a value that is exactly representable in int8. The network's forward pass sees values as if they were quantized, but the computation remains in floating-point so that gradients can be computed normally.
 
 Consider a weight value of 0.3021 with scale \\(S = 0.00784\\). Fake quantization maps it to the nearest grid point:
+
+To see exactly how this simulated quantization is applied, we quantify it:
 
 $$q = \text{round}(0.3021 / 0.00784) = \text{round}(38.54) = 39$$
 $$\hat{r} = 39 \times 0.00784 = 0.3058$$
@@ -193,7 +197,8 @@ QAT requires:
 
 For a model that took weeks to train on a GPU cluster, QAT adds days of additional compute. For a model that cannot be retrained — because the training data is unavailable, the training recipe is proprietary, or the compute budget is exhausted — QAT is not an option.
 
-To put the cost in concrete terms: a ResNet-50 that trained in 2 hours might need 30 minutes of QAT fine-tuning. A BERT-base that trained in 4 days might need 8–12 hours of QAT. A 70B LLM that took months is practically infeasible to QAT \u2014 this is why researchers instead use algorithms like GPTQ and AWQ (Chapter 17) that achieve similar goals without retraining.
+To put the cost in concrete terms: a ResNet-50 that trained in 2 hours might need 30 minutes of QAT fine-tuning. A BERT-base that trained in 4 days might need 8–12 hours of QAT. A 70B LLM that took months is practically infeasible to QAT.
+These are advanced methods that improve basic rounding (explained earlier): GPTQ and AWQ (Chapter 17).
 
 QAT is a last resort for models where PTQ's structural ceiling has been reached. It is not a default because it is expensive, and for quantization-friendly models, PTQ works just as well without the cost.
 
@@ -257,3 +262,9 @@ In both cases, the final deployed model has the same structure: weights stored a
 QAT is almost never combined with dynamic quantization. The reason is a conflict of purpose: QAT trains the model to be robust to a *specific fixed* scale at each boundary — that is its entire value. Dynamic quantization computes a *new* scale for every input, so the model already adapts to each input's range automatically. Training a model to tolerate a fixed constraint that will never be applied at inference is redundant. The accuracy benefit of QAT becomes negligible when scales adapt on the fly, and the training cost is not justified.
 
 If you see QAT, assume the target is static quantization.
+
+**Failure Signals**
+
+- Quantized validation remains unstable after fine-tuning
+- High clamp rate in fake-quant layers
+- Accuracy collapses when switching from fake-quant to real inference

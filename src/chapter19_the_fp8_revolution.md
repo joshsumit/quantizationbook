@@ -1,5 +1,11 @@
 # Chapter 19: The FP8 Revolution
 
+So far, we have seen: quantization = mapping values to lower precision with controlled error.
+Naive int8 quantization fails here because outliers cause severe resolution loss.
+This section shows how FP8 changes the grid to reduce that failure.
+
+In this chapter, we quantize activations, weights, and gradients using FP8 formats.
+
 ## Where Int8 Breaks
 
 Before introducing a new format, it is worth seeing precisely why the old one fails.
@@ -14,6 +20,8 @@ Consider a single activation vector from a transformer layer — 16 values from 
 Fifteen of these values cluster in the range [-1.1, 1.1]. One outlier sits at 60.0 — a pattern that appears routinely in transformer attention and MLP layers (Chapter 14).
 
 Under int8 per-tensor quantization, the scale is determined by the range:
+
+To see exactly how this distortion appears, we quantify it:
 
 $$S = \frac{60.0 - (-0.67)}{255} = \frac{60.67}{255} \approx 0.238$$
 
@@ -369,3 +377,9 @@ Having covered the full arc — from the grid (Chapter 2) through integer pipeli
 The key insight from this book: **quantization is not a single technique — it is a design space.** The right point in this space depends on your model architecture, your deployment hardware, your latency budget, and how much engineering effort you can invest. The chapters you have read give you the tools to navigate this space rather than guess.
 
 The question is no longer "int8 or float16?" It is "int8, int4, FP8, or float16 — and at which granularity, for which tensors, on which hardware?" The quantization landscape is now a matrix of formats, each optimal for a specific workload-hardware combination.
+
+**Failure Signals**
+
+- Accuracy remains unstable on outlier-heavy layers
+- Sensitive attention blocks degrade more than dense MLP blocks
+- Throughput gains appear but output quality regresses on long prompts

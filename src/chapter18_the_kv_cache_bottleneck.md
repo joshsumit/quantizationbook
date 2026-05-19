@@ -1,5 +1,12 @@
 # Chapter 18: The KV-Cache Bottleneck
 
+So far, we have seen: quantization = mapping values to lower precision with controlled error.
+So far, we quantized static data (weights). KV-cache is different: it is generated during inference.
+Naive quantization fails here because cache memory grows with sequence length and degrades long-context quality.
+This section shows how we fix that with KV-aware quantization choices.
+
+In this chapter, we quantize KV-cache tensors generated at runtime.
+
 ## The Second Memory Wall
 
 Chapter 1 established that inference is memory-bandwidth-bound — the cost of loading model weights dominates latency. Chapter 16 addressed this by compressing weights from 140 GB to 35 GB. That was the first memory wall.
@@ -15,6 +22,8 @@ During autoregressive generation, each transformer layer caches the key and valu
 Before the formula, a brief architecture note: a transformer has \\(L\\) *layers* (large models typically have 80–100), each with an *attention mechanism* that has \\(H\\) *KV-heads* (fewer in models using grouped-query attention), each operating on vectors of dimension \\(d\\) (typically 128). At each generation step, every head in every layer stores one key vector and one value vector for the current token. These accumulate as the sequence grows.
 
 For a transformer with \\(L\\) layers, \\(H\\) KV-heads, and head dimension \\(d\\), the KV-cache stores two tensors (key and value) per layer per head. In float16, the KV-cache size for a sequence of \\(T\\) tokens is:
+
+To see exactly how fast this memory grows, we quantify it:
 
 $$\text{KV size} = L \times 2 \times H \times d \times T \times 2 \text{ bytes}$$
 
@@ -75,6 +84,9 @@ KV-cache quantization operates on *dynamic values* that are generated during inf
 ---
 
 ## Approaches to KV-Cache Quantization
+
+Naive cache quantization fails because distribution drift over tokens makes one fixed scale unreliable.
+This section shows practical strategies and their trade-offs.
 
 ### Per-Token Quantization
 

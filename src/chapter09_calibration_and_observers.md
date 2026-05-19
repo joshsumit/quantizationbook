@@ -1,12 +1,18 @@
 # Chapter 9: Calibration and Observers
 
+In this chapter, we quantize activations by estimating and freezing their runtime ranges.
+
 ## The Parameter Problem
 
 Scale and zero-point are binding contracts (Chapter 3). Every computation in the quantized model depends on their exact values. But how are they determined?
 
 For weights, the answer is straightforward: weights are fixed after training, so their range can be computed directly. But activations change with every input. The range of a layer's activations depends on the specific data being processed. Scale and zero-point for activations must be estimated from representative data before deployment.
 
-This estimation process is called *calibration*. The mechanism that collects the necessary statistics is called an *observer*. Together, they determine whether the quantized model's ranges will match the data it encounters in production — or whether they will be wrong from the start.
+This estimation process is called *calibration*.
+(Calibration means running representative data to estimate fixed quantization ranges.)
+The mechanism that collects the necessary statistics is called an *observer*.
+(An observer is a small module that records value ranges at a boundary.)
+Together, they determine whether the quantized model's ranges will match the data it encounters in production — or whether they will be wrong from the start.
 
 ### What "Static" Means
 

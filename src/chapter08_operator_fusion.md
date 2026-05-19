@@ -144,6 +144,7 @@ A fused kernel executes as a single kernel launch — one memory read for the in
 ## Fusion in the Weight-Only Regime
 
 Everything above assumes full integer quantization: int8 inputs, int8 weights, int32 accumulators, and int8 outputs. The boundary rules and fusion benefits follow from this pipeline. But in weight-only quantization (Chapter 16), the picture changes fundamentally.
+(Weight-only means only weights are quantized, while activations stay in floating-point.)
 
 In weight-only mode, weights are stored in int4 or int8 but are dequantized to float16 *inside the kernel* before the matrix multiply. The matmul itself runs in float16. Activations are never quantized. The output is float16.
 

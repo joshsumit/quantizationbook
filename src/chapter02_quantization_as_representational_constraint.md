@@ -1,5 +1,7 @@
 # Chapter 2: Quantization as a Representational Constraint
 
+In this chapter, we quantize activations onto a fixed integer grid.
+
 
 
 ---
@@ -14,6 +16,8 @@ This behavioral mechanism maps perfectly to a physical millimeter ruler. A stand
 To see how these equations process numerical signals, assume a neural network layer features an operational range bound between \\([-1.0, 1.0]\\). Applying uniform 8-bit quantization produces a grid of 256 lines numbered sequentially from code 0 to code \\(L-1\\) (255). 
 
 The mathematical blueprint to map a continuous real value (\\(r\\)) to its corresponding integer code (\\(q\\)) requires a scaling and rounding function:
+
+To see exactly how this distortion happens, we quantify it:
 
 \\[q = \text{round}\!\left(\frac{r - r_{\min}}{\Delta}\right)\\]
 

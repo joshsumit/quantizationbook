@@ -1,5 +1,7 @@
 # Chapter 3: Scale and Zero-Point
 
+In this chapter, we quantize weights and activations by defining their shared mapping parameters.
+
 > **Notation used in this chapter:** \\( r \\) denotes a real floating-point value; \\(q\\) denotes a quantized integer; \\(S\\) (scale) is the real-valued width of one quantization step; \\(Z\\) (zero-point) is the integer that represents real zero; \\( q_{\min}\\) and \\(q_{\max}\\) are the integer endpoints (e.g., 0 and 255 for uint8, or -128 and 127 for int8).
 
 ## The Mapping Problem
@@ -8,7 +10,9 @@ A quantization grid provides a fixed number of integer levels spanning a target 
 
 To solve this mapping problem, two parameters must be determined. First, we define the width of each step on the grid, which controls the resolution and spacing between representable values. Second, we determine where the grid sits relative to real zero, which ensures that floating-point zero maps precisely to an integer value.
 
-These two quantities are called *scale* and *zero-point*. Together, they fully define the affine mapping between real numbers and quantized integers. Once calculated during calibration, these parameters are fixed; every subsequent hardware instruction in the quantized model depends on their exact values.
+These two quantities are called *scale* and *zero-point*.
+(Scale is the real value represented by one integer step.)
+Together, they fully define the affine mapping between real numbers and quantized integers. Once calculated during calibration, these parameters are fixed; every subsequent hardware instruction in the quantized model depends on their exact values.
 
 ---
 
@@ -17,6 +21,8 @@ These two quantities are called *scale* and *zero-point*. Together, they fully d
 Scale (\\(S\\)) is the real-valued width of one quantization step — the distance between two adjacent representable values. It is the step size from Chapter 2 made precise.
 
 Given a real-valued range \\([r_{\min}, r_{\max}]\\) and an integer range \\([q_{\min}, q_{\max}]\\):
+
+To see exactly how this mapping works, we quantify it:
 
 $$S = \frac{r_{\max} - r_{\min}}{q_{\max} - q_{\min}}$$
 
