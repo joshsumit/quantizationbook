@@ -46,7 +46,11 @@ When executing a dot product of \\(N\\) independently quantized values, such as 
 
 \\[\text{Var}(\epsilon_{\text{output}}) \approx N \times \text{Var}(\epsilon_w) \times \mathbb{E}[x^2] + N \times \text{Var}(\epsilon_x) \times \mathbb{E}[w^2]\\]
 
-Here, \\(\epsilon_w\\) and \\(\epsilon_x\\) represent the weight and activation rounding errors, respectively. Because the output noise variance scales linearly with the dot-product width \\(N\\), a 4096-wide vector accumulates 4096 times more noise variance than a single scalar multiplication. To isolate and illustrate this growth pattern, the table below tracks the accumulated variance and standard deviation across varying dimensions, assuming \\(\mathbb{E}[x^2] \approx 1.0\\) and isolating weight quantization noise (\\(S = 0.00784\\), \\(\sigma = 0.0023\\)) for simplicity.
+Here, \\(\epsilon_w\\) and \\(\epsilon_x\\) represent the weight and activation rounding errors, respectively. The terms \\(\mathbb{E}[x^2]\\) and \\(\mathbb{E}[w^2]\\) denote the expected values (the average squared magnitudes) of the unquantized activations and weights. 
+This relationship demonstrates that the accumulated output noise is driven not only by the precision of the quantization grid itself, but also by the signal scaling factors: weight noise is amplified by the magnitude of the incoming activations, while activation noise is amplified by the magnitude of the static weights. 
+
+Because the output noise variance scales linearly with the dot-product width \\(N\\), a 4096-wide vector accumulates 4096 times more noise variance than a single scalar multiplication. To isolate and illustrate this growth pattern, the table below tracks the accumulated variance and standard deviation across varying dimensions, assuming \\(\mathbb{E}[x^2] \approx 1.0\\) and isolating weight quantization noise (\\(S = 0.00784\\), \\(\sigma = 0.0023\\)) for simplicity.
+
 
 | Dot-product width $N$ | Accumulated $\text{Var}$ | Accumulated $\sigma$ |
 | :--- | :--- | :--- |
