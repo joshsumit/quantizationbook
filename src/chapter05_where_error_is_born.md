@@ -52,13 +52,13 @@ This relationship demonstrates that the accumulated output noise is driven not o
 Because the output noise variance scales linearly with the dot-product width \\(N\\), a 4096-wide vector accumulates 4096 times more noise variance than a single scalar multiplication. To isolate and illustrate this growth pattern, the table below tracks the accumulated variance and standard deviation across varying dimensions, assuming \\(\mathbb{E}[x^2] \approx 1.0\\) and isolating weight quantization noise (\\(S = 0.00784\\), \\(\sigma = 0.0023\\)) for simplicity.
 
 
-| Dot-product width $N$ | Accumulated $\text{Var}$ | Accumulated $\sigma$ |
+| Dot-product width \\(N\\) | Accumulated \\(\text{Var}\\) | Accumulated \\(\sigma\\) |
 | :--- | :--- | :--- |
-| 1 | $5.12 \times 10^{-6}$ | 0.0023 |
-| 64 | $3.28 \times 10^{-4}$ | 0.018 |
-| 512 | $2.62 \times 10^{-3}$ | 0.051 |
-| 1024 | $5.24 \times 10^{-3}$ | 0.072 |
-| 4096 | $2.10 \times 10^{-2}$ | 0.145 |
+| 1 | \\(5.12 \times 10^{-6}\\) | 0.0023 |
+| 64 | \\(3.28 \times 10^{-4}\\) | 0.018 |
+| 512 | \\(2.62 \times 10^{-3}\\) | 0.051 |
+| 1024 | \\(5.24 \times 10^{-3}\\) | 0.072 |
+| 4096 | \\(2.10 \times 10^{-2}\\) | 0.145 |
 
 While a single quantized scalar introduces a baseline noise standard deviation of only 0.0023, a 4096-wide dot product amplifies that standard deviation to 0.145—an increase of over 60 times. For a network layer where typical output values span the range $[-1, 1]$, a noise standard deviation of 0.145 constitutes roughly 15% of the total signal amplitude. This compounding effect explains why wider layers in large-scale models exhibit a higher sensitivity to quantization degradation than narrower architectures.
 
