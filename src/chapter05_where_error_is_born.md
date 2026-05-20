@@ -60,7 +60,7 @@ Because the output noise variance scales linearly with the dot-product width \\(
 | 1024 | \\(5.24 \times 10^{-3}\\) | 0.072 |
 | 4096 | \\(2.10 \times 10^{-2}\\) | 0.145 |
 
-While a single quantized scalar introduces a baseline noise standard deviation of only 0.0023, a 4096-wide dot product amplifies that standard deviation to 0.145—an increase of over 60 times. For a network layer where typical output values span the range $$[-1, 1]$$, a noise standard deviation of 0.145 constitutes roughly 15% of the total signal amplitude. This compounding effect explains why wider layers in large-scale models exhibit a higher sensitivity to quantization degradation than narrower architectures.
+While a single quantized scalar introduces a baseline noise standard deviation of only 0.0023, a 4096-wide dot product amplifies that standard deviation to 0.145—an increase of over 60 times. For a network layer where typical output values span the range \\([-1, 1]\\), a noise standard deviation of 0.145 constitutes roughly 15% of the total signal amplitude. This compounding effect explains why wider layers in large-scale models exhibit a higher sensitivity to quantization degradation than narrower architectures.
 
 
 
