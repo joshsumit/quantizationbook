@@ -62,19 +62,17 @@ Because the output noise variance scales linearly with the dot-product width \\(
 
 While a single quantized scalar introduces a baseline noise standard deviation of only 0.0023, a 4096-wide dot product amplifies that standard deviation to 0.145—an increase of over 60 times. For a network layer where typical output values span the range \\([-1, 1]\\), a noise standard deviation of 0.145 constitutes roughly 15% of the total signal amplitude. This compounding effect explains why wider layers in large-scale models exhibit a higher sensitivity to quantization degradation than narrower architectures.
 
-
-
 ### What Quantization Noise Is and What It Is Not
 
-The word "noise" invites a misconception. In other machine learning contexts, noise is sometimes injected deliberately â€” as regularization, as data augmentation, or as a source of stochasticity. Quantization noise is none of those things.
+The term "noise" frequently introduces a conceptual misconception. Unlike other machine learning contexts where noise is injected deliberately for regularization, data augmentation, or as a source of stochasticity, quantization noise represents an irreversible loss of fidelity. When a value \\(r\\) is mapped to \\(\hat{r} = r + \epsilon\\), the error term \\(\epsilon\\) is neither isolated nor tracked; it is permanently baked into the tensor representation. At inference time, the hardware possesses no runtime mechanism to detect or compensate for this degradation. The distortion simply propagates through subsequent layers silently and cumulatively.
 
-Quantization noise is a *measurement of damage*. When a value \\(r\\) becomes \\(\hat{r} = r + \epsilon\\), the \\(\epsilon\\) is not stored, not fed into another module, and not corrected later. It is baked into the output â€” permanently and invisibly. At inference time, the quantized model simply runs; there is no mechanism that detects or compensates for the accumulated error.
+Consequently, quantization noise is not an internal resource for the model, but rather a vital diagnostic metric for the systems engineer. Quantizing a model effectively requires tracking this metric to drive three primary engineering decisions:
 
-So what is this noise actually *used for*? Not by the model â€” by the engineer. Quantization noise is an engineering diagnostic:
+First, it establishes where **quantization is architecturally safe**. Measuring the accumulated noise variance on a per-layer basis isolates which operations are robust to aggressive bit-widths like int8, and which specific layers must be preserved in FP16 to maintain structural accuracy. This localized assessment forms the deterministic basis for mixed-precision deployment policies.
 
-- **To decide where quantization is safe.** Measuring noise per layer tells you which layers tolerate int8 and which must stay in FP16. This is the basis of mixed-precision policies (Chapter 12).
-- **To choose scales and formats.** Calibration (Chapter 9) runs candidate configurations and compares the noise they produce â€” per-tensor vs per-channel, symmetric vs asymmetric, percentile vs min-max. The configuration with less noise wins.
-- **To predict accuracy drop before deployment.** Metrics like signal-to-quantization-noise ratio (SQNR) or per-layer activation MSE let you estimate accuracy degradation without deploying the model.
+Second, it governs the selection of **optimal scales and numerical formats**. Data calibration routines execute candidate configurations across a calibration dataset to actively profile the resulting noise signatures. Comparing these outcomes allows an engineer to objectively validate choices between per-tensor and per-channel scaling, symmetric and asymmetric quantization boundaries, or min-max and percentile clipping strategies. The structural configuration that minimizes the metric is selected for production.
+
+Finally, quantifying this noise allows for the **predictive estimation of downstream performance loss** prior to full deployment. System-level metrics such as the Signal-to-Quantization-Noise Ratio (SQNR) or localized mean squared error (MSE) across layer activations provide mathematical proxies for model degradation. This allows engineers to reliably forecast accuracy drops without incurring the high latency and compute costs of running complete validation benchmarks.
 
   **SQNR worked example.** For the int8 case with \\(\sigma_{\text{noise}} = 0.0023\\) and a signal with std \\(\sigma_{\text{signal}} = 0.2\\):
 
@@ -84,11 +82,11 @@ So what is this noise actually *used for*? Not by the model â€” by the engi
 
   $$\text{SQNR} = 20 \log_{10}\!\left(\frac{0.2}{0.038}\right) = 20 \log_{10}(5.26) = 20 \times 0.721 = 14.4 \text{ dB}$$
 
-  For reference: audio engineers consider SNR below 20 dB noticeably degraded. In neural networks, 38 dB (int8) is typically comfortable â€” the noise is negligible relative to the signal. At 14 dB (int4), the noise is a significant fraction of the signal, and accuracy drops become likely. The ~24 dB gap between int8 and int4 corresponds to a ~16Ã— difference in noise power.
+  For reference: audio engineers consider SNR below 20 dB noticeably degraded. In neural networks, 38 dB (int8) is typically comfortable, the noise is negligible relative to the signal. At 14 dB (int4), the noise is a significant fraction of the signal, and accuracy drops become likely. The ~24 dB gap between int8 and int4 corresponds to a ~16Ã— difference in noise power.
 
-- **To train robustness.** QAT (Chapter 11) deliberately injects fake quantization noise during training so the model learns to produce outputs that survive it. The noise is treated as adversarial irritation, not as a learned signal.
+- **To train robustness.** QAT deliberately injects fake quantization noise during training so the model learns to produce outputs that survive it. The noise is treated as adversarial irritation, not as a learned signal.
 
-The one-sentence version: *we observe quantization noise to decide how far we can push low precision before the model breaks â€” the model itself never sees or uses the noise as a feature.*
+*Quantization noise is observed to decide how far we can push low precision before the model breaks” the model itself never sees or uses the noise as a feature.*
 
 **When this model breaks.** The uniform noise assumption requires that values are not aligned with the grid. It holds well for weights (which are continuous-valued after training) and for activations in intermediate layers. It breaks in two cases:
 

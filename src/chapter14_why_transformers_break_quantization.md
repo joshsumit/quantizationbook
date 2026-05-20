@@ -4,24 +4,43 @@ In this chapter, we quantize transformer activations and show where that fails.
 
 ## A Different Failure Regime
 
-Everything in Chapters 1â€“13 works well for convolutional neural networks and simple feedforward architectures. Models like ResNet-50 quantize to int8 with PTQ and lose less than 1% accuracy. The weight distributions are compact, the activation ranges are bounded, and the standard quantization machinery handles them cleanly.
+Everything in Chapters 1–13 works well for convolutional neural networks and simple feedforward architectures. Models like ResNet-50 quantize to INT8 using Post-Training Quantization (PTQ) while losing less than 1% accuracy. Their weight distributions are compact, activation ranges are bounded, and standard quantization handles them cleanly.
 
-Transformers are different. Large language models and vision transformers produce activation distributions that violate the assumptions baked into standard quantization. The failure is not "harder quantization" â€” it is a structurally different problem that the standard tools were not designed for.
+Large language models and vision transformers produce activation distributions that violate the core assumptions of standard quantization. Transformers pose a structurally different problem, driven by extreme activation outliers, that standard tools were not designed to solve.
 
 ---
 
 ## Activation Outliers
 
-In transformer models, a small number of activation channels consistently produce values that are orders of magnitude larger than typical activations. This is not noise. It is a structural property of the computation.
+**Systems Note:** Throughout this section, we use the term **channels** to refer to the feature dimensions (or hidden units/neurons) of the transformer. While "channel" traditionally originates from convolutional neural networks, hardware profiling tools, kernels, and quantization literature use it because these dimensions map directly to the contiguous memory columns of the activation tensor during matrix multiplication.
 
-In a typical large language model, a given linear layer might have 512 output channels. Of these, 510 channels produce activations with maximum absolute values below 2.0. The remaining 2 channels produce values reaching 60 or 80 â€” 30 to 40Ã— larger than the typical channels.
+In transformer models, a small number of activation channels consistently produce values that are orders of magnitude larger than typical activations. This is a structural property of the computation, not noise.
 
-These outlier channels are consistent: the same channels produce extreme values across diverse inputs. They emerge in sufficiently large transformers (often at the multi-billion parameter scale) and grow more extreme as model size increases. They are a property of the transformer architecture and its training dynamics, not artifacts of specific datasets or training runs.
-
-Why do they appear? Transformer models use *LayerNorm* (layer normalization) before each linear projection. LayerNorm rescales each layerâ€™s output to have unit variance â€” but this rescaling is per-token, not per-channel. As a result, a few channels that consistently carry important structural information (e.g., â€œis this a verb?â€ or â€œis this the end of a sentence?â€) can grow extreme magnitudes during training without being suppressed, because the per-token normalization doesnâ€™t distinguish between channels. This is not a bug â€” it is how transformers learn to maintain stable representations.
+In a typical large language model, a given linear layer might have 512 output channels. Of these, 510 channels produce activations with maximum absolute values below 2.0. The remaining 2 channels produce values reaching 60 or 80—30 to 40× larger than the typical channels. These outlier channels are consistent: the same channels produce extreme values across diverse inputs. They emerge in sufficiently large transformers (often at the multi-billion parameter scale) and grow more extreme as model size increases. They are a property of the transformer architecture and its training dynamics, not artifacts of specific datasets or training runs.
 
 Outliers are especially common in activations immediately after LayerNorm-projected linear layers.
 
+### Origin of Activation Outliers
+
+Transformer architectures use Layer Normalization (*LayerNorm*) before each linear projection. LayerNorm rescales the activations to ensure unit variance, but this operation is executed per-token across the hidden dimensions rather than per-channel. 
+
+To visualize this at the hardware and tensor level, consider an activation tensor entering a LayerNorm block with a 2D shape of `[Sequence Length (Tokens), Hidden Dimension (Channels)]`:
+
+CHANNELS (e.g., 512)
+             C1   C2   C3  ...  C512
+   Token 1 [ 1.2, 0.1, 75.0, ..., 0.4 ]  --> Normalized together as one row
+T  Token 2 [ 0.8, 0.3, 82.0, ..., 0.2 ]  --> Normalized together as one row
+O  Token 3 [ 1.1, 0.2, 79.0, ..., 0.5 ]  --> Normalized together as one row
+K  ...
+N  Token N [ 0.9, 0.1, 80.0, ..., 0.3 ]  --> Normalized together as one row
+                        |
+                        v
+Look down Channel 3 (C3):
+Every single value is massive.
+
+Because LayerNorm operates horizontally across the channel vector for each individual token, it never normalizes vertically across the sequence for a single channel. This means if a specific channel column consistently produces massive values for every token in a sequence, LayerNorm has no mechanism to scale down that specific column relative to its neighbors.
+
+Consequently, specific channels that encode persistent structural information—such as syntax markers or sequence delimiters—can accumulate high magnitudes during training. The per-token normalization loop preserves these channel-wise variations, allowing a small subset of features to scale up without triggering a normalization penalty. This behavior is a structural mechanism of the transformer architecture to maintain representational capacity across layers, not a training anomaly.
 *Canonical category: Distribution Mismatch / Budget Waste.*
 
 ---

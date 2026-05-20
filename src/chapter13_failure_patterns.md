@@ -1,12 +1,14 @@
 ﻿# Chapter 13: Failure Patterns
 
-In this chapter, we quantize nothing new and diagnose failures from quantized weights, activations, and boundary conversions.
+In this chapter, we diagnose failures from quantized weights, activations, and boundary conversions.
 
 ## A Diagnostic Atlas
 
-The complete quantization machinery is now in place: the representational grid, the scale contract, hardware constraints, three error types, graph boundaries, requantization, fusion, calibration, and three quantization strategies.
+With the foundational elements of quantization established—the representational grid, the scale contract, hardware constraints, error types, graph boundaries, requantization, fusion, calibration, and quantization strategies.
 
-It is now possible to diagnose quantization failures systematically. Before examining the individual failure patterns, here is the diagnostic order â€” the sequence in which to investigate when a quantized model misbehaves:
+It is now possible to diagnose quantization failures systematically. Before examining the individual failure patterns, here is the diagnostic sequence in which to investigate when a quantized model misbehaves:
+
+
 
 > **ðŸ“Š INSERT DIAGRAM: Quantization Failure Diagnostic Flowchart**
 >
