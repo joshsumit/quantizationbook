@@ -12,7 +12,7 @@ Large language models and vision transformers produce activation distributions t
 
 ## Activation Outliers
 
-**Systems Note:** Throughout this section, we use the term **channels** to refer to the feature dimensions (or hidden units/neurons) of the transformer. While "channel" traditionally originates from convolutional neural networks, hardware profiling tools, kernels, and quantization literature use it because these dimensions map directly to the contiguous memory columns of the activation tensor during matrix multiplication.
+> **Systems Note:** Throughout this section, we use the term **channels** to refer to the feature dimensions (or hidden units/neurons) of the transformer. While "channel" traditionally originates from convolutional neural networks, hardware profiling tools, kernels, and quantization literature use it because these dimensions map directly to the contiguous memory columns of the activation tensor during matrix multiplication.
 
 In transformer models, a small number of activation channels consistently produce values that are orders of magnitude larger than typical activations. This is a structural property of the computation, not noise.
 
@@ -26,7 +26,8 @@ Transformer architectures use Layer Normalization (*LayerNorm*) before each line
 
 To visualize this at the hardware and tensor level, consider an activation tensor entering a LayerNorm block with a 2D shape of `[Sequence Length (Tokens), Hidden Dimension (Channels)]`:
 
-CHANNELS (e.g., 512)
+```text
+               CHANNELS (e.g., 512)
              C1   C2   C3  ...  C512
    Token 1 [ 1.2, 0.1, 75.0, ..., 0.4 ]  --> Normalized together as one row
 T  Token 2 [ 0.8, 0.3, 82.0, ..., 0.2 ]  --> Normalized together as one row
@@ -35,12 +36,14 @@ K  ...
 N  Token N [ 0.9, 0.1, 80.0, ..., 0.3 ]  --> Normalized together as one row
                         |
                         v
-Look down Channel 3 (C3):
-Every single value is massive.
+             Look down Channel 3 (C3):
+             Every single value is massive.
+```
 
 Because LayerNorm operates horizontally across the channel vector for each individual token, it never normalizes vertically across the sequence for a single channel. This means if a specific channel column consistently produces massive values for every token in a sequence, LayerNorm has no mechanism to scale down that specific column relative to its neighbors.
 
 Consequently, specific channels that encode persistent structural information—such as syntax markers or sequence delimiters—can accumulate high magnitudes during training. The per-token normalization loop preserves these channel-wise variations, allowing a small subset of features to scale up without triggering a normalization penalty. This behavior is a structural mechanism of the transformer architecture to maintain representational capacity across layers, not a training anomaly.
+
 *Canonical category: Distribution Mismatch / Budget Waste.*
 
 ---
