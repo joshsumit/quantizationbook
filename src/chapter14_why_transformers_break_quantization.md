@@ -74,7 +74,7 @@ Without outliers, the standard channels would utilize the entire dynamic range o
 
 $$\text{Usable Levels without outliers} = \frac{4.0}{0.0157} \approx 255$$
 
-The 2 outlier channels represent less than 0.4% of the layer's width ($\frac{\text{Total Outliers}}{\text{Total Channels}} = \frac{2}{512} \approx 0.39\%$), yet they cost the remaining 99.6% of the features a 30× reduction in resolution ($\frac{\text{Levels without Outliers}}{\text{Levels with Outliers}} = \frac{255}{8.5} = 30$).
+The 2 outlier channels represent less than 0.4% of the layer's width \\(\frac{\text{Total Outliers}}{\text{Total Channels}} = \frac{2}{512} \approx 0.39\%\\), yet they cost the remaining 99.6% of the features a 30× reduction in resolution \\(\frac{\text{Levels without Outliers}}{\text{Levels with Outliers}} = \frac{255}{8.5} = 30\\).
 
 This structural phenomenon makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
 
