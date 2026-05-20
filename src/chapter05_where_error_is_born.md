@@ -36,17 +36,17 @@ Because no value within the representable range can exceed this limit, rounding 
 
 ### Quantizing the Noise: A First-Order Model
 
-Rounding error can be modeled as additive noise. When a value $r$ is quantized, the reconstructed value is $\hat{r} = r + \epsilon$, where $\epsilon$ represents the rounding error. Assuming the distribution of $r$ is not systematically aligned with the quantization grid—a valid assumption for neural network weights and activations—$\epsilon$ behaves approximately as a uniform random variable on the interval $[-S/2, +S/2]$. The variance of this uniform distribution is defined by the classical signal processing quantization noise formula:
+Rounding error can be modeled as additive noise. When a value \\(r\\) is quantized, the reconstructed value is \\(\hat{r} = r + \epsilon\\), where \\(\epsilon\\) represents the rounding error. Assuming the distribution of \\(r\\) is not systematically aligned with the quantization grid—a valid assumption for neural network weights and activations—\\(\epsilon\\) behaves approximately as a uniform random variable on the interval \\([-S/2, +S/2]\\). The variance of this uniform distribution is defined by the classical signal processing quantization noise formula:
 
-$$\text{Var}(\epsilon) = \frac{S^2}{12}$$
+\\[\text{Var}(\epsilon) = \frac{S^2}{12}\\]
 
-This formula provides a direct method for estimating error magnitude across different bit-widths. For example, an int8 representation over the range $[-1, 1]$ yields a step size of $S = 0.00784$, resulting in a variance of $\text{Var}(\epsilon) = 5.12 \times 10^{-6}$ and a standard deviation of $\sigma \approx 0.0023$. Conversely, an int4 representation over the same range increases the step size to $S = 0.133$, which escalates the variance to $\text{Var}(\epsilon) = 1.48 \times 10^{-3}$ and the standard deviation to $\sigma \approx 0.038$—approximately a 17-fold increase in noise magnitude.
+This formula provides a direct method for estimating error magnitude across different bit-widths. For example, an int8 representation over the range \\([-1, 1]\\) yields a step size of \\(S = 0.00784\\), resulting in a variance of \\(\text{Var}(\epsilon) = 5.12 \times 10^{-6}\\) and a standard deviation of \\(\sigma \approx 0.0023\\). Conversely, an int4 representation over the same range increases the step size to \\(S = 0.133\\), which escalates the variance to \\(\text{Var}(\epsilon) = 1.48 \times 10^{-3}\\) and the standard deviation to \\(\sigma \approx 0.038\\)—approximately a 17-fold increase in noise magnitude.
 
-When executing a dot product of $N$ independently quantized values, such as a single output channel in a linear layer, the output noise variance accumulates according to the following relationship:
+When executing a dot product of \\(N\\) independently quantized values, such as a single output channel in a linear layer, the output noise variance accumulates according to the following relationship:
 
-$$\text{Var}(\epsilon_{\text{output}}) \approx N \times \text{Var}(\epsilon_w) \times \mathbb{E}[x^2] + N \times \text{Var}(\epsilon_x) \times \mathbb{E}[w^2]$$
+\\[\text{Var}(\epsilon_{\text{output}}) \approx N \times \text{Var}(\epsilon_w) \times \mathbb{E}[x^2] + N \times \text{Var}(\epsilon_x) \times \mathbb{E}[w^2]\\]
 
-Here, $\epsilon_w$ and $\epsilon_x$ represent the weight and activation rounding errors, respectively. Because the output noise variance scales linearly with the dot-product width $N$, a 4096-wide vector accumulates 4096 times more noise variance than a single scalar multiplication. To isolate and illustrate this growth pattern, the table below tracks the accumulated variance and standard deviation across varying dimensions, assuming $\mathbb{E}[x^2] \approx 1.0$ and isolating weight quantization noise ($S = 0.00784$, $\sigma = 0.0023$) for simplicity.
+Here, \\(\epsilon_w\\) and \\(\epsilon_x\\) represent the weight and activation rounding errors, respectively. Because the output noise variance scales linearly with the dot-product width \\(N\\), a 4096-wide vector accumulates 4096 times more noise variance than a single scalar multiplication. To isolate and illustrate this growth pattern, the table below tracks the accumulated variance and standard deviation across varying dimensions, assuming \\(\mathbb{E}[x^2] \approx 1.0\\) and isolating weight quantization noise (\\(S = 0.00784\\), \\(\sigma = 0.0023\\)) for simplicity.
 
 | Dot-product width $N$ | Accumulated $\text{Var}$ | Accumulated $\sigma$ |
 | :--- | :--- | :--- |
