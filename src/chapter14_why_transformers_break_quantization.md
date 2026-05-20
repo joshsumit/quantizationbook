@@ -48,30 +48,28 @@ Consequently, specific channels that encode persistent structural information—
 
 ---
 
-## Why Outliers Break Per-Tensor Quantization
+### Precision Collapse under Per-Tensor Quantization
 
-Per-tensor quantization assigns a single scale to the entire activation tensor. The scale must accommodate the maximum value in the tensor â€” including the outlier channels.
+Per-tensor quantization assigns a single scale factor ($S$) to an entire activation tensor. This scale factor must accommodate the absolute maximum value present in the tensor, forcing the quantization grid to span the extreme outliers.
 
-Consider the layer described above. Under per-tensor int8 quantization:
-
-To see exactly how this collapse happens, we quantify it:
+Consider the layer with 512 channels under symmetric per-tensor `int8` quantization, where the outlier channels peak at 60.0. The scale factor is calculated as:
 
 $$S = \frac{2 \times 60.0}{255} = \frac{120.0}{255} \approx 0.47$$
 
-The step size is 0.47. For the 510 normal channels with values in [-2.0, 2.0], the number of usable grid points is:
+With a quantization step size of 0.47, the 510 typical channels—whose values lie strictly within the $[-2.0, 2.0]$ range—are compressed into a heavily constrained set of usable grid points:
 
-$$\frac{4.0}{0.47} \approx 8.5$$
+$$\text{Usable Levels} = \frac{4.0}{0.47} \approx 8.5$$
 
-Eight to nine levels for channels where the model's behavior depends on distinguishing activations at a resolution of 0.001 or better in floating-point. The floating-point model had millions of distinct values in this range. The quantized model has nine.
+The floating-point model relies on millions of distinct values within this standard range to capture fine-grained behavioral signals at a resolution of 0.001 or finer. Post-quantization, these channels are truncated into just eight or nine discrete integer levels, resulting in massive quantization noise and representation collapse.
 
-For comparison, if the outlier channels did not exist:
+To isolate the impact of these outliers, consider the quantization resolution if they did not exist. The scale factor for a maximum value of 2.0 would be:
 
 $$S = \frac{2 \times 2.0}{255} = \frac{4.0}{255} \approx 0.0157$$
 
-The normal channels would get approximately \\(4.0 / 0.0157 \approx 255\\) levels â€” the full resolution of int8. The outlier channels, which represent less than 0.4% of the channels, are costing the other 99.6% a 30Ã— reduction in resolution.
+Without outliers, the standard channels would utilize the entire dynamic range of the `int8` data type, accessing approximately 255 discrete levels ($4.0 / 0.0157$). 
 
-This is the outlier explosion pattern from Chapter 13, but at a scale and consistency that makes it the dominant failure mode rather than an occasional problem.
-
+The outlier channels represent less than 0.4% of the layer's width, yet they cost the remaining 99.6% of the features a 30× reduction in resolution. This structural phenomenon makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
++++
 *Canonical category: Resolution Collapse (in normal channels) caused by Distribution Mismatch / Budget Waste.*
 
 ---
