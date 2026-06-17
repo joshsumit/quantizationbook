@@ -82,13 +82,20 @@ This structural phenomenon makes the activation outlier problem the primary fail
 
 ---
 
-## Per-Channel Does Not Fully Solve It
+## Per-Channel Quantization: The Residual Failure Mode
 
-Per-channel quantization assigns a separate scale to each output channel. This eliminates the problem of outlier channels contaminating normal channels â€” each channel gets its own range.
+Per-channel quantization assigns a unique scale factor to each output channel. By decoupling the quantization grids, an extreme value in a single outlier channel can no longer contaminate the resolution of neighboring, normal channels. Each channel scales strictly to its own dynamic range.
 
-But transformer outliers are not only per-channel. They also vary across the token dimension. For a given channel, the outlier magnitude may be 80 for one token and 3 for another. Per-channel quantization uses a single scale per channel across all tokens. If that scale is set by the maximum (80), tokens with activations near 3 get poor resolution. If it is set for the typical range, the outlier tokens clip.
+However, transformer outliers are not statically bound to a single dimension; they vary dynamically across the token (sequence) dimension. While a specific channel may consistently harbor outliers, the magnitude of those outliers fluctuates aggressively from token to token. 
 
-The problem is two-dimensional â€” channel-local and token-variant: outliers are concentrated in specific channels, but their magnitude varies across tokens. Per-channel quantization addresses the first dimension but not the second.
+> **For example:** In a given outlier channel, Token A (e.g., a high-signal word or punctuation mark) might fire with an activation magnitude of 80.0, while Token B (e.g., a standard filler word) might only reach a magnitude of 3.0.
+
+Because standard per-channel quantization applies a single static scale factor across the entire sequence length, it forces a destructive trade-off:
+
+* **Scaling for the Max (80.0):** The scale factor expands to accommodate the peak token. Consequently, the standard tokens with activations near 3.0 suffer severe resolution collapse, similar to the per-tensor problem.
+* **Scaling for the Typical Range (3.0):** The scale factor tightens to preserve resolution for standard tokens. Consequently, the peak outlier tokens are aggressively clipped, saturating the activation to $\pm 127$ and destroying critical high-magnitude features.
+
+The fundamental limitation is that activation outliers are a two-dimensional problem—**channel-local** and **token-variant**. Outliers are structural because they concentrate in specific channels, but they are dynamic because their amplitudes fluctuate across the sequence. Per-channel quantization solves the spatial distribution but fails to handle the temporal variance.
 
 *Canonical category: Tail Clipping vs Budget Waste trade-off across the token dimension.*
 
