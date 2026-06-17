@@ -18,7 +18,7 @@ In transformer models, a small, predictable subset of activation channels consis
 
 In a typical large language model layer with 512 output channels, 510 channels produce activations with maximum absolute values below 2.0. The remaining 2 channels regularly generate values reaching 60.0 or 80.0—exceeding the baseline magnitude by 30 to 40 times. These outlier channels exhibit strict spatial consistency, maintaining extreme values across entirely diverse input prompts. They emerge predictably as transformers cross the multi-billion parameter threshold and grow progressively more severe as model scale increases. These attributes emerge directly from the transformer architecture and its internal training dynamics, independent of specific datasets or isolated training runs.
 
-Outliers occur with the highest frequency in activations immediately following linear layers that succeed a LayerNorm block.
+Outliers are most frequently observed in activations immediately following linear projections that take LayerNorm-normalized inputs, since the normalization removes scale and the subsequent linear layers selectively amplify specific directions.
 
 ### Origin of Activation Outliers
 
@@ -43,37 +43,43 @@ Specific channels that encode persistent structural information—such as syntax
 
 ### Precision Collapse under Per-Tensor Quantization
 
-Per-tensor quantization assigns a single scale factor \\(S\\) to an entire activation tensor. This scale factor must accommodate the absolute maximum value present in the tensor, forcing the quantization grid to span the extreme outliers.
+Per-tensor quantization assigns a single scale factor \\(S\\) to an entire activation tensor. This scale factor must accommodate the absolute maximum value present across all dimensions of the tensor, forcing the uniform quantization grid to span the extreme outliers.
 
-Consider a layer with 512 channels under symmetric per-tensor int8 quantization where 2 channels act as extreme outliers peaking at 60.0, leaving the remaining 510 channels within a normal baseline range. Because symmetric quantization requires a balanced grid around zero, the dynamic range must span from -60.0 to +60.0, establishing a total window width of 120.0 units.
+To understand the mathematical collapse this layout causes, consider a concrete structural profiling example. Suppose profiling an activation tensor reveals that its 512 channels split into two distinct behavioral zones:
+* **The Normal Range (510 Channels):** The vast majority of channels (99.6% of the layer width) contain standard features. Their values reside completely within a compact baseline range of \\([-2.0, 2.0]\\). This baseline spans a total floating-point window width of 4.0 units (\\(2.0 - (-2.0) = 4.0\\)).
+* **The Outlier Range (2 Channels):** A tiny subset of dimensions (0.4% of the layer width) generates extreme values peaking at an absolute maximum of 60.0.
 
-The runtime calculates the scale factor as:
+Because symmetric uniform quantization requires a balanced grid centered around zero, the runtime must scale the entire tensor's grid budget using the global absolute peak. The system must therefore construct a quantization window that stretches from -60.0 to +60.0, establishing a total dynamic range window of 120.0 units (\\(60.0 - (-60.0) = 120.0\\)).
 
-\\(S = \frac{2 \times 60.0}{255} = \frac{120.0}{255} \approx 0.47\\)
+An signed int8 data type provides exactly 256 discrete integer levels, spanning from -128 to 127. In a symmetric setup, the dynamic range maps across 255 available steps. The runtime calculates the uniform scale factor \\(S\\) (the real-world value step size between each discrete integer code) by dividing the total outlier-dominated window width by the total step budget:
 
-With a large quantization step size of 0.47, the 510 typical channels—which lie strictly within a baseline \\([-2.0, 2.0]\\) range—are compressed into a heavily constrained set of usable grid points:
+\\(S = \frac{2 \times 60.0}{255} = \frac{120.0}{255} \approx 0.4706\\)
 
-\\(\text{Usable Levels with Outliers} = \frac{4.0}{0.47} \approx 8.5\\)
+This scale factor applies uniformly to every channel in the tensor. Each integer point on the int8 grid now stands approximately 0.4706 units apart. 
 
-The original floating-point model relies on millions of distinct values within this standard range to capture fine-grained behavioral signals at a resolution of 0.001 or finer. Post-quantization truncates these channels into just eight or nine discrete integer levels, resulting in massive quantization noise and severe representation collapse.
+This massive step size creates a catastrophic resolution crisis for the 510 normal-range channels. Because those standard channels only possess a total real-world window width of 4.0 units (\\[-2.0, 2.0]\\), the number of discrete integer grid levels available to describe them drops sharply. We calculate the usable levels by dividing their entire baseline window by the step size \\(S\\):
 
-To isolate the impact of these outliers, consider the quantization resolution if they did not exist. The scale factor for a maximum value of 2.0 would be:
+\\(\text{Usable Levels with Outliers} = \frac{\text{Normal Window Width}}{\text{Scale Factor } S} = \frac{4.0}{0.4706} \approx 8.5\\)
 
-\\(S = \frac{2 \times 2.0}{255} = \frac{4.0}{255} \approx 0.0157\\)
+The post-quantization runtime truncates these 510 channels into just eight or nine discrete integer values (such as codes -4, -3, -2, -1, 0, 1, 2, 3, 4). The original floating-point model relies on millions of fine-grained fractional states within that \\([-2.0, 2.0]\\) neighborhood to isolate subtle behavioral tokens. Compressing 99.6% of the network's features into nine crude levels introduces overwhelming quantization noise and destroys representational capacity.
 
-Without outliers, the standard channels utilize the entire dynamic range of the int8 data type:
+To isolate the structural damage caused by these two outlier channels, calculate the ideal quantization resolution if they did not exist. Without outliers, the global maximum value drops to the normal channel limit of 2.0. The runtime would calculate an optimized scale factor tailored strictly to the standard baseline range:
 
-\\(\text{Usable Levels without Outliers} = \frac{4.0}{0.0157} \approx 255\\)
+\\(S_{\text{ideal}} = \frac{2 \times 2.0}{255} = \frac{4.0}{255} \approx 0.0157\\)
+
+With an ideal step size of 0.0157, the standard channels utilize the complete dynamic range of the int8 data type:
+
+\\(\text{Usable Levels without Outliers} = \frac{\text{Normal Window Width}}{\text{Ideal Scale Factor } S_{\text{ideal}}} = \frac{4.0}{0.0157} \approx 255\\)
+
+Comparing these two scenarios reveals the exact scale of the destruction. We find the resolution reduction ratio by dividing the clean, outlier-free level count by the outlier-degraded level count:
+
+\\(\text{Resolution Reduction Ratio} = \frac{\text{Usable Levels without Outliers}}{\text{Usable Levels with Outliers}} = \frac{255}{8.5} = 30\\)
 
 The 2 outlier channels represent less than 0.4% of the layer's total width:
 
 \\(\frac{\text{Total Outliers}}{\text{Total Channels}} = \frac{2}{512} \approx 0.39\%\\)
 
-Yet, these two dimensions force a 30-fold reduction in resolution across the remaining 99.6% of the features:
-
-\\(\frac{\text{Levels without Outliers}}{\text{Levels with Outliers}} = \frac{255}{8.5} = 30\\)
-
-This structural phenomenon makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
+Yet, because per-tensor quantization forces a shared grid scale, these two dimensions inflict a 30-fold reduction in resolution across the remaining 99.6% of the features. This structural mismatch makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
 
 *Canonical category: Resolution Collapse (in normal channels) caused by Distribution Mismatch / Budget Waste.*
 
