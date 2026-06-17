@@ -46,24 +46,24 @@ Specific channels that encode persistent structural information—such as syntax
 Per-tensor quantization enforces a single scale factor \(S\) across an entire activation tensor. In the presence of outliers, this global grid budget must span the absolute peak value, destroying the resolution of normal-range channels.
 
 Consider an activation tensor with 512 channels split into two behavioral zones:
-* **Normal Range (510 channels):** Values reside within \([-2.0, 2.0]\). 
-* **Outlier Range (2 channels):** Values peak at an absolute maximum of \(60.0\).
+* **Normal Range (510 channels):** Values reside within \\([-2.0, 2.0]\\). 
+* **Outlier Range (2 channels):** Values peak at an absolute maximum of \\(60.0\\).
 
-Symmetric uniform quantization requires a balanced grid centered around zero. The runtime must scale the entire tensor using the absolute maximum value (\(x_{\text{max}} = 60.0\)), establishing a total dynamic window width of:
+Symmetric uniform quantization requires a balanced grid centered around zero. The runtime must scale the entire tensor using the absolute maximum value (\\(x_{\text{max}} = 60.0)\\), establishing a total dynamic window width of:
 
-\(\text{Total Window Width} = 2 \times x_{\text{max}} = 2 \times 60.0 = 120.0\)
+\\(\text{Total Window Width} = 2 \times x_{\text{max}} = 2 \times 60.0 = 120.0\\)
 
-A signed int8 format maps this dynamic range across 255 available symmetric steps. The uniform scale factor \(S\) represents the real-world step size between discrete integer codes:
+A signed int8 format maps this dynamic range across 255 available symmetric steps. The uniform scale factor \\(S\\) represents the real-world step size between discrete integer codes:
 
-\(S = \frac{2 \times x_{\text{max}}}{255} = \frac{120.0}{255} \approx 0.4706\)
+\\(S = \frac{2 \times x_{\text{max}}}{255} = \frac{120.0}{255} \approx 0.4706\\)
 
-Because this scale factor applies globally, it forces a catastrophic resolution collapse on the 510 normal-range channels. We calculate the discrete levels available to represent their entire \(4.0\)-unit wide baseline range (\(2.0 - (-2.0) = 4.0\)) by dividing by the step size \(S\):
+Because this scale factor applies globally, it forces a catastrophic resolution collapse on the 510 normal-range channels. We calculate the discrete levels available to represent their entire \(4.0\)-unit wide baseline range (\\(2.0 - (-2.0) = 4.0\)) by dividing by the step size \\(S\\):
 
-\(\text{Usable Levels with Outliers} = \frac{\text{Normal Baseline Width}}{S} = \frac{4.0}{0.4706} \approx 8.5\)
+\\(\text{Usable Levels with Outliers} = \frac{\text{Normal Baseline Width}}{S} = \frac{4.0}{0.4706} \approx 8.5\\)
 
 Post-quantization truncates 99.6% of the network's features into just eight or nine discrete integer levels, turning precision signals into crude quantization noise.
 
-To isolate the structural impact of these outliers, consider the ideal scenario if they did not exist. The tensor maximum drops to \(x_{\text{normal\_max}} = 2.0\), yielding an optimized step size:
+To isolate the structural impact of these outliers, consider the ideal scenario if they did not exist. The tensor maximum drops to \\(x_{\text{normal\_max}} = 2.0\\), yielding an optimized step size:
 
 \\(S_{\text{ideal}} = \frac{2 \times 2.0}{255} = \frac{4.0}{255} \approx 0.0157\\)
 
@@ -79,7 +79,7 @@ The two outlier channels constitute a tiny fraction of the layer width:
 
 \\(\text{Outlier Ratio} = \frac{2}{512} \approx 0.39\%\\)
 
-Yet, because per-tensor quantization forces a shared grid scale, this \(0.39\%\) of dimensions inflicts a 30-fold resolution drop across the remaining \(99.6\%\) of the features. This mathematical mismatch makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
+Yet, because per-tensor quantization forces a shared grid scale, this \\(0.39\%\\) of dimensions inflicts a 30-fold resolution drop across the remaining \\(99.6\%\\) of the features. This mathematical mismatch makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
 
 *Canonical category: Resolution Collapse (in normal channels) caused by Distribution Mismatch / Budget Waste.*
 
