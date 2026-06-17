@@ -43,43 +43,43 @@ Specific channels that encode persistent structural information—such as syntax
 
 ### Precision Collapse under Per-Tensor Quantization
 
-Per-tensor quantization assigns a single scale factor \\(S\\) to an entire activation tensor. This scale factor must accommodate the absolute maximum value present across all dimensions of the tensor, forcing the uniform quantization grid to span the extreme outliers.
+Per-tensor quantization enforces a single scale factor \(S\) across an entire activation tensor. In the presence of outliers, this global grid budget must span the absolute peak value, destroying the resolution of normal-range channels.
 
-To understand the mathematical collapse this layout causes, consider a concrete structural profiling example. Suppose profiling an activation tensor reveals that its 512 channels split into two distinct behavioral zones:
-* **The Normal Range (510 Channels):** The vast majority of channels (99.6% of the layer width) contain standard features. Their values reside completely within a compact baseline range of \\([-2.0, 2.0]\\). This baseline spans a total floating-point window width of 4.0 units (\\(2.0 - (-2.0) = 4.0\\)).
-* **The Outlier Range (2 Channels):** A tiny subset of dimensions (0.4% of the layer width) generates extreme values peaking at an absolute maximum of 60.0.
+Consider an activation tensor with 512 channels split into two behavioral zones:
+* **Normal Range (510 channels):** Values reside within \([-2.0, 2.0]\). 
+* **Outlier Range (2 channels):** Values peak at an absolute maximum of \(60.0\).
 
-Because symmetric uniform quantization requires a balanced grid centered around zero, the runtime must scale the entire tensor's grid budget using the global absolute peak. The system must therefore construct a quantization window that stretches from -60.0 to +60.0, establishing a total dynamic window width of 120.0 units \\(60.0 - (-60.0) = 120.0)\\).
+Symmetric uniform quantization requires a balanced grid centered around zero. The runtime must scale the entire tensor using the absolute maximum value (\(x_{\text{max}} = 60.0\)), establishing a total dynamic window width of:
 
-A signed int8 data type provides exactly 256 discrete integer levels, spanning from -128 to 127. In a symmetric setup, the dynamic range maps across 255 available steps. The runtime calculates the uniform scale factor \\(S\\) (the real-world value step size between each discrete integer code) by dividing the total dynamic window width by the total step budget:
+\(\text{Total Window Width} = 2 \times x_{\text{max}} = 2 \times 60.0 = 120.0\)
 
-\\[S = \frac{2 \times 60.0}{255} = \frac{120.0}{255} \approx 0.4706\\]
+A signed int8 format maps this dynamic range across 255 available symmetric steps. The uniform scale factor \(S\) represents the real-world step size between discrete integer codes:
 
-This scale factor applies uniformly to every channel in the tensor. Each integer point on the int8 grid now stands approximately 0.4706 units apart. 
+\(S = \frac{2 \times x_{\text{max}}}{255} = \frac{120.0}{255} \approx 0.4706\)
 
-This massive step size creates a catastrophic resolution crisis for the 510 normal-range channels. Because those standard channels only possess a total real-world window width of 4.0 units (\\[-2.0, 2.0]\\), the number of discrete integer grid levels available to describe them drops sharply. We calculate the usable levels by dividing their entire baseline window by the step size \\(S\\):
+Because this scale factor applies globally, it forces a catastrophic resolution collapse on the 510 normal-range channels. We calculate the discrete levels available to represent their entire \(4.0\)-unit wide baseline range (\(2.0 - (-2.0) = 4.0\)) by dividing by the step size \(S\):
 
-\\(\text{Usable Levels with Outliers} = \frac{\text{Normal Window Width}}{\text{Scale Factor } S} = \frac{4.0}{0.4706} \approx 8.5\\)
+\(\text{Usable Levels with Outliers} = \frac{\text{Normal Baseline Width}}{S} = \frac{4.0}{0.4706} \approx 8.5\)
 
-The post-quantization runtime truncates these 510 channels into just eight or nine discrete integer values (such as codes -4, -3, -2, -1, 0, 1, 2, 3, 4). The original floating-point model relies on millions of fine-grained fractional states within that \\([-2.0, 2.0]\\) neighborhood to isolate subtle behavioral tokens. Compressing 99.6% of the network's features into nine crude levels introduces overwhelming quantization noise and destroys representational capacity.
+Post-quantization truncates 99.6% of the network's features into just eight or nine discrete integer levels, turning precision signals into crude quantization noise.
 
-To isolate the structural damage caused by these two outlier channels, calculate the ideal quantization resolution if they did not exist. Without outliers, the global maximum value drops to the normal channel limit of 2.0. The runtime would calculate an optimized scale factor tailored strictly to the standard baseline range:
+To isolate the structural impact of these outliers, consider the ideal scenario if they did not exist. The tensor maximum drops to \(x_{\text{normal\_max}} = 2.0\), yielding an optimized step size:
 
 \\(S_{\text{ideal}} = \frac{2 \times 2.0}{255} = \frac{4.0}{255} \approx 0.0157\\)
 
-With an ideal step size of 0.0157, the standard channels utilize the complete dynamic range of the int8 data type:
+Without outliers, the standard channels utilize the full dynamic budget of the data type:
 
-\\(\text{Usable Levels without Outliers} = \frac{\text{Normal Window Width}}{\text{Ideal Scale Factor } S_{\text{ideal}}} = \frac{4.0}{0.0157} \approx 255\\)
+\\(\text{Usable Levels without Outliers} = \frac{\text{Normal Baseline Width}}{S_{\text{ideal}}} = \frac{4.0}{0.0157} \approx 255\\)
 
-Comparing these two scenarios reveals the exact scale of the destruction. We find the resolution reduction ratio by dividing the clean, outlier-free level count by the outlier-degraded level count:
+We quantify the structural destruction by calculating the resolution reduction ratio:
 
 \\(\text{Resolution Reduction Ratio} = \frac{\text{Usable Levels without Outliers}}{\text{Usable Levels with Outliers}} = \frac{255}{8.5} = 30\\)
 
-The 2 outlier channels represent less than 0.4% of the layer's total width:
+The two outlier channels constitute a tiny fraction of the layer width:
 
-\\(\frac{\text{Total Outliers}}{\text{Total Channels}} = \frac{2}{512} \approx 0.39\%\\)
+\\(\text{Outlier Ratio} = \frac{2}{512} \approx 0.39\%\\)
 
-Yet, because per-tensor quantization forces a shared grid scale, these two dimensions inflict a 30-fold reduction in resolution across the remaining 99.6% of the features. This structural mismatch makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
+Yet, because per-tensor quantization forces a shared grid scale, this \(0.39\%\) of dimensions inflicts a 30-fold resolution drop across the remaining \(99.6\%\) of the features. This mathematical mismatch makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
 
 *Canonical category: Resolution Collapse (in normal channels) caused by Distribution Mismatch / Budget Waste.*
 
