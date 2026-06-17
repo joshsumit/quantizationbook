@@ -49,11 +49,11 @@ To understand the mathematical collapse this layout causes, consider a concrete 
 * **The Normal Range (510 Channels):** The vast majority of channels (99.6% of the layer width) contain standard features. Their values reside completely within a compact baseline range of \\([-2.0, 2.0]\\). This baseline spans a total floating-point window width of 4.0 units (\\(2.0 - (-2.0) = 4.0\\)).
 * **The Outlier Range (2 Channels):** A tiny subset of dimensions (0.4% of the layer width) generates extreme values peaking at an absolute maximum of 60.0.
 
-Because symmetric uniform quantization requires a balanced grid centered around zero, the runtime must scale the entire tensor's grid budget using the global absolute peak. The system must therefore construct a quantization window that stretches from -60.0 to +60.0, establishing a total dynamic range window of 120.0 units (\\(60.0 - (-60.0) = 120.0\\)).
+Because symmetric uniform quantization requires a balanced grid centered around zero, the runtime must scale the entire tensor's grid budget using the global absolute peak. The system must therefore construct a quantization window that stretches from -60.0 to +60.0, establishing a total dynamic window width of 120.0 units \\(60.0 - (-60.0) = 120.0)\\).
 
-An signed int8 data type provides exactly 256 discrete integer levels, spanning from -128 to 127. In a symmetric setup, the dynamic range maps across 255 available steps. The runtime calculates the uniform scale factor \\(S\\) (the real-world value step size between each discrete integer code) by dividing the total outlier-dominated window width by the total step budget:
+A signed int8 data type provides exactly 256 discrete integer levels, spanning from -128 to 127. In a symmetric setup, the dynamic range maps across 255 available steps. The runtime calculates the uniform scale factor \\(S\\) (the real-world value step size between each discrete integer code) by dividing the total dynamic window width by the total step budget:
 
-\\(S = \frac{2 \times 60.0}{255} = \frac{120.0}{255} \approx 0.4706\\)
+\\[S = \frac{2 \times 60.0}{255} = \frac{120.0}{255} \approx 0.4706\\]
 
 This scale factor applies uniformly to every channel in the tensor. Each integer point on the int8 grid now stands approximately 0.4706 units apart. 
 
