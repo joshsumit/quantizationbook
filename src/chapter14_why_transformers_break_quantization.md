@@ -6,7 +6,6 @@ In this chapter, we analyze the structural behavior of transformer activations u
 
 The quantization methodologies detailed in Chapters 1–13 deliver excellent results for convolutional neural networks (CNNs) and classic feedforward architectures. For instance, standard Post-Training Quantization (PTQ) compresses networks like ResNet-50 to `int8` precision while keeping the accuracy drop well below 1%. These models exhibit compact weight distributions and strictly bounded activation ranges, allowing standard uniform grids to map them cleanly.
 
-
 In contrast, large language models (LLMs) and vision transformers (ViTs) generate activation distributions that systematically break the core assumptions of uniform quantization. Transformers introduce a structurally distinct optimization challenge. Instead of well-behaved parameters, they generate extreme, systematic activation outliers that standard quantization frameworks simply lack the architectural capacity to resolve.
 
 ---
@@ -48,9 +47,7 @@ During training, the model frequently dedicates specific channels to encode pers
 
 When the row-normalized activations are multiplied by these amplified weight columns, the operation selectively scales the target channel by orders of magnitude:
 
-\\[
-\text{Activation}_{\text{out}} = \text{LayerNorm}(\text{Activation}_{\text{in}}) \times W
-\\]
+\\[\text{Activation}_{\text{out}} = \text{LayerNorm}(\text{Activation}_{\text{in}}) \times W\\]
 
 Because LayerNorm bypasses column-wise variance tracking, it passes a structurally unconstrained channel directly to an aggressive linear projector. The resulting output tensor contains isolated channels that spike to \\(60.0\\) or \\(80.0\\) across the entire sequence, forming the unquantizable outliers that compromise the shared per-tensor grid.
 
@@ -66,21 +63,15 @@ Consider an activation tensor with 512 channels split into two behavioral zones:
 
 Symmetric uniform quantization requires a balanced grid centered around zero. The runtime must scale the entire tensor using the absolute maximum value (\\(x_{\text{max}} = 60.0\\)), establishing a total dynamic window width of:
 
-\\[
-\text{Total Window Width} = 2 \times x_{\text{max}} = 2 \times 60.0 = 120.0
-\\]
+\\[\text{Total Window Width} = 2 \times x_{\text{max}} = 2 \times 60.0 = 120.0\\]
 
 A signed int8 format maps this dynamic range across 255 available symmetric steps. The uniform scale factor \\(S\\) represents the real-world step size between discrete integer codes:
 
-\\[
-S = \frac{2 \times x_{\text{max}}}{255} = \frac{120.0}{255} \approx 0.4706
-\\]
+\\[S = \frac{2 \times x_{\text{max}}}{255} = \frac{120.0}{255} \approx 0.4706\\]
 
 Because this scale factor applies globally, it forces a catastrophic resolution collapse on the 510 normal-range channels. We calculate the discrete levels available to represent their entire \\(4.0\\)-unit wide baseline range (\\(2.0 - (-2.0) = 4.0\\)) by dividing by the step size \\(S\\):
 
-\\[
-\text{Usable Levels with Outliers} = \frac{\text{Normal Baseline Width}}{S} = \frac{4.0}{0.4706} \approx 8.5
-\\]
+\\[\text{Usable Levels with Outliers} = \frac{\text{Normal Baseline Width}}{S} = \frac{4.0}{0.4706} \approx 8.5\\]
 
 
 To see why this \\(8.5\\) value is a massive red flag for network precision, let's trace how distinct floating-point activations inside the normal channels map onto this coarse grid. 
