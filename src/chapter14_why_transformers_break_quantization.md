@@ -47,11 +47,9 @@ During training, the model frequently dedicates specific channels to encode pers
 
 When the row-normalized activations are multiplied by these amplified weight columns, the operation selectively scales the target channel by orders of magnitude:
 
-\\[\text{Activation}_{\text{out}} = \text{LayerNorm}(\text{Activation}_{\text{in}}) \times W\\]
+\\[\text{Activation}\_{\text{out}} = \text{LayerNorm}(\text{Activation}\_{\text{in}}) \times W\\]
 
 Because LayerNorm bypasses column-wise variance tracking, it passes a structurally unconstrained channel directly to an aggressive linear projector. The resulting output tensor contains isolated channels that spike to \\(60.0\\) or \\(80.0\\) across the entire sequence, forming the unquantizable outliers that compromise the shared per-tensor grid.
-
-*Canonical category: Distribution Mismatch / Budget Waste.*
 
 ### 14.2.2 Quantization Grid Resolution Collapse
 
@@ -61,9 +59,9 @@ Consider an activation tensor with 512 channels split into two behavioral zones:
 * **Normal Range (510 channels):** Values reside within \\([-2.0, 2.0]\\). 
 * **Outlier Range (2 channels):** Values peak at an absolute maximum of \\(60.0\\).
 
-Symmetric uniform quantization requires a balanced grid centered around zero. The runtime must scale the entire tensor using the absolute maximum value (\\(x_{\text{max}} = 60.0\\)), establishing a total dynamic window width of:
+Symmetric uniform quantization requires a balanced grid centered around zero. The runtime must scale the entire tensor using the global absolute peak (\\(x_{\text{max}} = 60.0\\)). This forces the grid boundaries to span from \\(-x_{\text{max}}\\) to \\(+x_{\text{max}}\\) (from \\(-60.0\\) to \\(+60.0\\)), establishing a total dynamic window width of:
 
-\\[\text{Total Window Width} = 2 \times x_{\text{max}} = 2 \times 60.0 = 120.0\\]
+\\[\text{Total Window Width} = x_{\text{max}} - (-x_{\text{max}}) = 2 \times x_{\text{max}} = 2 \times 60.0 = 120.0\\]
 
 A signed int8 format maps this dynamic range across 255 available symmetric steps. The uniform scale factor \\(S\\) represents the real-world step size between discrete integer codes:
 
