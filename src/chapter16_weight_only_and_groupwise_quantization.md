@@ -4,165 +4,184 @@ In this chapter, we quantize model weights while keeping activations in higher p
 
 ## The Memory Problem Returns
 
-Inference is memory-bandwidth-bound: the bottleneck is loading parameters from memory, not computing with them. SmoothQuant addresses activation quantization â€” making activations survive int8 by redistributing outliers. But for the largest language models, a different approach has become dominant: quantize only the weights and leave activations in higher precision entirely.
-(Weight-only means only weights are quantized; activations remain float during compute.)
+In large language model (LLM) generation, inference is primarily memory-bandwidth-bound: the primary bottleneck is loading model parameters from High Bandwidth Memory (HBM) to the processor, rather than arithmetic computation. While techniques like SmoothQuant address activation quantization by mathematically smoothing out outlier channels to enable full $\text{int8}$ execution, a dominant paradigm for LLM serving is **weight-only quantization**. Under this approach, only the model weights are compressed, while activations remain entirely in higher floating-point precision during execution.
 
-The reasoning is economic. A 70-billion-parameter model in float16 occupies 140 GB. At a memory bandwidth of 900 GB/s, loading the full model for one token takes ~156 milliseconds. At int4, the model is 35 GB â€” loading takes ~39 milliseconds, a 4Ã— improvement.
+This approach addresses the core hardware and memory bottlenecks of LLM serving:
 
-Activations, by contrast, are small during decode. For a single inference with batch size 1, the activation tensor at each layer is shaped [1, hidden_dim] â€” typically a few kilobytes. Even in float16, activations contribute negligibly to the memory traffic during decode. Quantizing them saves almost nothing in bandwidth. In prefill or large-batch scenarios, activation traffic and compute can dominate â€” but for the decode bottleneck, the entire bandwidth argument from Chapter 1 applies to weights, not activations.
+* **Weight Footprint:** A 70-billion-parameter model stored in $\text{float16}$ requires $140\text{ GB}$ of memory. On a hardware platform with a memory bandwidth of $900\text{ GB/s}$, streaming the entire model to generate a single token requires approximately $156\text{ ms}$. Quantizing the weights to $\text{int4}$ reduces the memory footprint to $35\text{ GB}$, dropping the single-token transfer time to approximately $39\text{ ms}$—a linear $4\times$ throughput improvement.
+* **Activation Scale during Decode:** During the autoregressive decode phase with a batch size of 1, the activation tensor at any given layer is small, typically shaped $[1, \text{hidden\_dim}]$—typically a few kilobytes. Even in native $\text{float16}$, these tensors consume only a few kilobytes of memory traffic. Consequently, quantizing activations during decode yields negligible bandwidth savings.
+
+While activation data transfer and compute density scale up significantly during the prefill phase or under massive batch sizes (shifting the workload into a compute-bound regime), the weight streaming bottleneck dominates low-batch generation. Therefore, memory bandwidth optimization is maximally realized by targeting the weights alone.
 
 ---
 
 ## Compute-Bound vs. Memory-Bound: When Weight-Only Applies
 
-Not all workloads benefit from weight-only quantization. The benefit depends on whether inference is *memory-bound* or *compute-bound*.
+Not all workloads benefit from weight-only quantization. The real-world payoff depends entirely on whether inference is *memory-bound* or *compute-bound*.
 
-**Memory-bound workloads** (LLM token generation, batch size 1): The GPU spends most of its time loading weights from HBM. The compute units are idle, waiting for data. Weight-only quantization cuts the data to load by 2â€“4Ã—, directly improving tokens-per-second. This is the dominant LLM serving scenario.
+**Memory-bound workloads** (e.g., LLM token generation at batch size 1): The GPU spends most of its execution cycles loading weights from High Bandwidth Memory (HBM). The arithmetic compute units remain idle while waiting for data. Weight-only quantization reduces the data transfer payload by $2\times$ to $4\times$, directly improving tokens-per-second throughput. This represents the dominant regime in LLM serving scenarios.
 
-**Compute-bound workloads** (CNNs, large-batch LLM prefill, image models): The compute units are fully utilized. The bottleneck is arithmetic, not data loading. Weight-only quantization still reduces memory footprint (useful for fitting the model on fewer GPUs), but it does *not* improve throughput â€” because the dequantized float16 matmul runs at the same speed as a native float16 matmul. In compute-bound regimes, weight-only typically improves footprint more than throughput, and dequant overhead can even reduce performance if it becomes the limiter.
+**Compute-bound workloads** (e.g., CNNs, large-batch LLM prefill, image models): The arithmetic compute units are fully utilized. The primary bottleneck is processing throughput, not data loading latency. Weight-only quantization still reduces the memory footprint—enabling massive models to fit onto fewer acceleration devices—but it does *not* improve execution throughput. This limitation occurs because the quantized weights must be dequantized back to floating-point precision on-the-fly, running at the speed of a native $\text{float16}$ matrix multiplication. Furthermore, if the dequantization logic introduces significant instruction overhead, it can act as a limiter and degrade overall performance.
 
-| Workload | Bottleneck | Weight-Only Benefit | Full int8 Benefit |
-|---|---|---|---|
-| LLM decode (batch=1) | Memory bandwidth | High (2â€“4Ã— throughput) | Limited (activations are tiny) |
-| LLM prefill (batch=32) | Compute | Low (only memory savings) | Often high (up to 2Ã— compute throughput, hardware-dependent) |
-| CNN inference | Compute | Low | High |
-| Batch embedding | Compute | Low | High |
+| Workload | Bottleneck | Weight-Only Benefit | Full $\text{int8}$ Benefit |
+| :--- | :--- | :--- | :--- |
+| **LLM Decode** ($B=1$) | Memory bandwidth | High ($2\times$ to $4\times$ throughput) | Limited (activations are negligible) |
+| **LLM Prefill** ($B=32$) | Compute | Low (memory footprint savings only) | High (up to $2\times$ compute throughput, hardware-dependent) |
+| **CNN Inference** | Compute | Low | High |
+| **Batch Embedding** | Compute | Low | High |
 
-This distinction explains why weight-only quantization dominates in the LLM serving world but is rarely used for CNNs. A ResNet-50 inference at batch 32 is compute-bound â€” full int8 quantization doubles throughput; weight-only quantization changes nothing.
+This architectural distinction explains why weight-only quantization dominates LLM serving infrastructure but is rarely deployed for vision networks. A ResNet-50 inference pipeline at batch size 32 is entirely compute-bound; switching to full $\text{int8}$ quantization doubles operational throughput, whereas weight-only quantization yields no performance gains.
 
 ---
 
 ## Weight-Only Quantization
 
-In weight-only quantization, weights are stored in a low-precision format â€” typically int4 or int8. At inference time, they are dequantized to float16 on-the-fly, just before the matrix multiplication. The matmul itself runs in float16. Activations are never quantized.
+In weight-only quantization, model weights are stored in a low-precision format—typically $\text{int4}$ or $\text{int8}$—while activations remain entirely unquantized. At inference time, the weights are dequantized to $\text{float16}$ on-the-fly immediately before matrix multiplication, allowing the General Matrix Multiply (GEMM) execution to run in native $\text{float16}$ precision.
 
-The data flow for a single linear layer:
+The structural data flow for a single linear layer proceeds as follows:
 
-1. Load int4 weights from memory (low bandwidth cost)
-2. Dequantize to float16 on-the-fly (often fused into the GEMM kernel)
-3. Multiply float16 activations Ã— float16 weights (standard matmul)
-4. Output is float16 (no requantization)
+1. **Load:** Fetch low-precision (e.g., $\text{int4}$) weights from memory, minimizing memory bandwidth consumption.
+2. **Dequantize:** Unpack and scale the weights back to $\text{float16}$ on-the-fly, an operation typically fused directly into the GEMM kernel to avoid intermediate memory round-trips.
+3. **Compute:** Perform standard floating-point matrix multiplication ($\text{float16}$ activations $\times$ $\text{float16}$ weights).
+4. **Output:** Pass the resulting $\text{float16}$ tensor directly to the next layer without downstream quantization steps.
 
-The only quantization error is in the weight representation. And because weights are static â€” they do not change between inputs â€” the error is fixed and predictable. There is no per-input variation, no calibration drift, no dynamic range problem. The weight values are what they are, and the quantization error is baked in at model load time.
+Under this paradigm, the only source of quantization noise resides within the static weight representation. Because weights are immutable and do not vary based on runtime inputs, this error is fixed and deterministic. This design entirely bypasses input-dependent variance, dynamic range tracking issues, and calibration drift. The quantization error is completely baked into the parameters at model load time.
 
-Weight-only quantization typically uses symmetric int4 (zero-point = 0) with per-group scales. This simplifies metadata (scales only, no zero-points) and avoids the asymmetric-scaling overhead.
+Weight-only configurations commonly employ symmetric $\text{int4}$ quantization (where the zero-point is fixed at 0) combined with per-group scales. This structural choice simplifies runtime metadata overhead by eliminating the storage and integer alignment logic required for explicit zero-points (asymmetric-scaling overhead).
 
-The matmul itself is exact (within float16 precision). There is no requantization boundary (Chapter 7) at the output, because the output is float16 â€” no domain conversion is needed. The entire requantization error budget from Chapters 6â€“8 is irrelevant for weight-only quantization.
+Consequently, the underlying arithmetic remains exact within the limits of $\text{float16}$ precision. Because the output layer does not require a domain conversion step back to integer precision, the system circumvents the requantization boundaries discussed in Chapter 7. For this reason, the complex cumulative rounding noise budgets typically associated with full integer pipelines are non-factors in weight-only execution.
 
 ---
 
 ## The Resolution Problem at 4-Bit
 
-Int4 has 16 levels. Representing a weight distribution that spans, say, [-0.5, 0.5] with 16 levels gives a step size of:
+Standard $\text{int4}$ quantization provides exactly 16 discrete representation levels. Representing a weight distribution that spans a symmetric range of, say, $[-0.5, 0.5]$ across these 16 levels yields a quantization step size ($S$) of:
 
 $$S = \frac{1.0}{15} \approx 0.067$$
 
-Two weight values that differ by less than 0.067 become the same integer. For a model where weight precision matters â€” and in large language models, it matters enormously â€” this is coarse.
+Mathematically, any two distinct weight values that differ by less than $0.067$ collapse into the same integer code. For deep architectures where fine-grained parametric precision dictates model performance—such as large language models—this discrete grid is highly destructive. 
 
-*Canonical category: Resolution Collapse â€” the 4-bit grid is too coarse to preserve weight distinctions that the model relies on.*
+> **Canonical Category: Resolution Collapse**  
+> The $\text{int4}$ quantization grid is fundamentally too coarse to preserve the subtle weight distinctions required to maintain model accuracy.
 
-Per-tensor quantization (one scale for the entire weight matrix) makes this worse. If one region of the weight matrix contains values in [-0.01, 0.01] and another contains values in [-0.5, 0.5], the per-tensor scale is set by the wider range. The small-value region gets perhaps one grid point. The weight information in that region is effectively destroyed.
+Coarse quantization granularities like per-tensor quantization (where a single scale factor is applied to an entire weight matrix) severely compound this issue. If one sub-region of a weight matrix contains tight values clustered within $[-0.01, 0.01]$ while another sub-region spans a wider range of $[-0.5, 0.5]$, the global per-tensor scale is dictated entirely by the maximum absolute boundary. As a result, the narrow distribution region is allocated perhaps a single quantization grid point, effectively destroying the underlying weight information and architectural signal in that area.
 
-Per-channel quantization (one scale per output row) helps â€” each row gets its own range. But within a row, variance can still be high. The solution is to go finer.
+Transitioning to per-channel quantization (assigning an independent scale factor to each output channel, corresponding to a row in a standard `[out_features, in_features]` weight matrix) partially mitigates this destruction by isolating the dynamic range of individual rows. However, intra-row variance within a single channel can still remain high enough to trigger precision dropouts. To solve this, the quantization granularity must be driven down even finer.
 
 ---
 
 ## Group-Wise Quantization
 
-Group-wise quantization assigns a separate scale (and optionally zero-point) to each *group* of consecutive weights along a dimension.
-(Group-wise means splitting weights into small groups and giving each group its own scale.)
-Instead of one scale per tensor or one scale per channel, there is one scale per group of \\(g\\) weights.
+Group-wise quantization assigns an independent scale factor (and optionally a zero-point) to a fixed sub-segment or *group* of consecutive weights along a single dimension. Instead of using one scale for the entire tensor or one scale per channel, the dimension is partitioned into distinct blocks of size $g$.
 
-Consider a weight matrix of shape [4096, 4096] â€” 16.7 million weights.
+Consider a weight matrix of shape $[4096 \times 4096]$, totaling approximately 16.7 million weights.
 
-**Per-tensor (group size = all):** 1 scale. The entire matrix shares one range. If any region has extreme values, all regions pay the resolution cost.
+* **Per-tensor (group size = all):** 1 scale factor. The entire matrix shares a single dynamic range. If any specific region contains extreme outliers, every other region pays the price via coarser resolution.
+* **Per-channel (group size = 4096, one per row):** 4,096 scale factors. Each output channel (row) receives an independent range. While this accounts for variance between rows, it fails to capture high variance nested within an individual row.
+* **Group-wise (group size = 128):** Each 4096-element row is subdivided into 32 distinct groups of 128 weights. Each individual group is quantized using its own scale factor. This yields a total metadata budget of: 
+  $$4096 \times \left(\frac{4096}{128}\right) = 131,072 \text{ scales}$$
 
-**Per-channel (group size = 4096, one per row):** 4,096 scales. Each row gets its own range. Variance between rows is handled, but variance within a row is not.
+### A Detailed Look at Intra-Row Variance
 
-**Group-wise (group size = 128):** Each row is divided into groups of 128 weights. Each group gets its own scale. Total scales: \\(4096 \times (4096 / 128) = 131{,}072\\).
+Suppose we evaluate Row 1 of our $[4096 \times 4096]$ matrix across its 32 sub-groups using symmetric 4-bit quantization (spanning 15 quantization steps from center):
 
-**Detailed example.** Take row 1 of a [4096 Ã— 4096] weight matrix, divided into 32 groups of 128 weights each:
+* **Group 1 (columns 0–127):** Local weights fall within $[-0.12, 0.15]$, giving a local range of $0.27$. 
+  The calculated scale factor is:
+  $$S_1 = \frac{0.27}{15} = 0.018$$
+  An arbitrary weight value of $0.05$ within this group maps to the integer code:
+  $$\text{round}\left(\frac{0.05 - (-0.12)}{0.018}\right) = \text{round}(9.44) = 9$$
+  This dequantizes back to:
+  $$-0.12 + (9 \times 0.018) = 0.042 \quad (\text{Absolute Error} = 0.008)$$
 
-- Group 1 (columns 0â€“127): weights in [-0.12, 0.15], range = 0.27. Scale \\(= 0.27 / 15 = 0.018\\). A weight of 0.05 maps to code \\(\text{round}((0.05 - (-0.12)) / 0.018) = \text{round}(9.44) = 9\\), dequantized to \\(-0.12 + 9 \times 0.018 = 0.042\\). Error: 0.008.
-- Group 17 (columns 2176â€“2303): weights in [-0.48, 0.47], range = 0.95. Scale \\(= 0.95 / 15 = 0.063\\). The same weight 0.05 maps to code \\(\text{round}((0.05 - (-0.48)) / 0.063) = \text{round}(8.41) = 8\\), dequantized to \\(-0.48 + 8 \times 0.063 = 0.024\\). Error: 0.026 â€” 3.3Ã— worse.
+* **Group 17 (columns 2176–2303):** Local weights fall within a wider range of $[-0.48, 0.47]$, giving a local range of $0.95$. 
+  The calculated scale factor is:
+  $$S_{17} = \frac{0.95}{15} = 0.063$$
+  The same weight value of $0.05$ within this group maps to the integer code:
+  $$\text{round}\left(\frac{0.05 - (-0.48)}{0.063}\right) = \text{round}(8.41) = 8$$
+  This dequantizes back to:
+  $$-0.48 + (8 \times 0.063) = 0.024 \quad (\text{Absolute Error} = 0.026)$$
 
-Group 1â€™s narrow range gives it 3.3Ã— better precision than Group 17. Under per-tensor quantization, both groups would share the matrix-wide range (say [-0.52, 0.50], scale \\(= 1.02/15 = 0.068\\)), giving Group 1 only \\(0.27/0.068 \approx 4\\) usable levels instead of 15. Group-wise quantization preserves each groupâ€™s local precision.
+Because Group 1 isolates its narrow range from Group 17, it achieves $3.3\times$ better precision for the same underlying value. Under global per-tensor quantization, both sub-groups would share a massive matrix-wide range (e.g., $[-0.52, 0.50]$, forcing a scale of $S = \frac{1.02}{15} = 0.068$). At that global resolution, Group 1 would only utilize roughly 4 grid levels instead of its full 15. Group-wise quantization effectively preserves this local precision.
 
-For a group of 128 weights that all fall in [-0.02, 0.02]:
+For an ultra-tight group of 128 weights falling completely within $[-0.02, 0.02]$, the step size becomes:
 
 $$S = \frac{0.04}{15} \approx 0.00267$$
 
-Compared to per-tensor with the full [-0.5, 0.5] range where \\(S = 0.067\\), this group's resolution is 25Ã— finer. The weights in this group are represented with precision matched to their actual range.
+Compared to a global per-tensor resolution where $S = 0.067$, this local block's resolution is $25\times$ finer. The parameters are represented with an exactitude matched directly to their local behavior.
 
-*Canonical category: group-wise quantization directly addresses Resolution Collapse and Distribution Mismatch / Budget Waste by matching each group's scale to its local range, rather than wasting codes on a globally-set range.*
+> **Canonical Category: Resolution Collapse & Distribution Mismatch** > Group-wise quantization directly addresses Resolution Collapse and Budget Waste by matching each group's scale to its local range, eliminating the phenomenon where quantization codes are wasted on an inflated, globally-set range.
 
-### The Overhead
+### The Metadata Overhead
 
-Each scale is stored alongside the weights. With 131,072 scales at 2 bytes each (float16), the metadata overhead is:
+These local scales must be packaged and loaded alongside the quantized weights. Storing 131,072 scales in standard $\text{float16}$ precision (2 bytes each) introduces a structural metadata footprint:
 
-$$131{,}072 \times 2 = 262 \text{ KB}$$
+$$131,072 \times 2 \text{ bytes} = 262 \text{ KB}$$
 
-The weight matrix itself at int4 occupies:
+Meanwhile, the core weight matrix stored in packed $\text{int4}$ elements occupies:
 
 $$16.7 \times 10^6 \times 0.5 \text{ bytes} = 8.35 \text{ MB}$$
 
-The metadata is ~3% of the weight data â€” a modest overhead for a significant accuracy improvement (scale-only metadata; zero-points or extra packing metadata increase this slightly).
+The resulting metadata overhead is approximately $3\%$ of the total weight footprint—a highly acceptable engineering tax given the substantial gains in perplexity and representation accuracy.
 
-### Group Size as a Knob
+### Group Size as an Optimization Knob
 
-Smaller groups mean more scales, better accuracy, and more metadata overhead. The trade-off:
+Modulating the group size ($g$) acts as an explicit architectural trade-off between mathematical accuracy and hardware memory overhead:
 
-| Group Size | Scales per Row | Accuracy | Metadata Overhead |
-|---|---|---|---|
-| 4096 (per-channel) | 1 | Lowest | Negligible |
-| 128 | 32 | Good | ~3% |
-| 32 | 128 | Better | ~12% |
-| 1 (per-element) | 4096 | Best (trivially) | 100%+ (defeats the purpose) |
+| Group Size ($g$) | Scales per Row | Representation Accuracy | Metadata Overhead |
+| :--- | :--- | :--- | :--- |
+| **4096** (Per-Channel) | 1 | Lowest | Negligible |
+| **128** | 32 | Good | $\sim 3\%$ |
+| **32** | 128 | Better | $\sim 12\%$ |
+| **1** (Per-Element) | 4096 | Best (Theoretical Maximum) | $> 100\%$ (Defeats the purpose) |
 
-Group sizes of 128 and 32 are the most common in practice â€” they provide substantial accuracy improvement over per-channel with manageable overhead. Group size 128 is the dominant choice for int4 LLM quantization today.
+In production environments, group sizes of 128 and 32 represent the sweet spots for hardware accelerators. Today, **group size 128** serves as the dominant structural default for modern $\text{int4}$ LLM deployment configurations.
+
+---
+## Error Propagation: Weight-Only vs. Full Integer Chains
+
+Systems architects who have internalized the precision constraints of full integer quantization pipelines (Chapters 6–8)—where explicit quantization boundaries, requantization noise, and error-mitigating operator fusion dominate the design—might expect those same engineering challenges to surface here. They do not.
+
+To understand why these concerns do not carry over, recall the standard integer arithmetic pipeline: 
+$$\text{int8} \times \text{int8} \rightarrow \text{int32 accumulator} \rightarrow \text{requantize to int8} \rightarrow \text{downstream layer}$$
+
+Every stage in that conventional integer pipeline introduces a discrete rounding boundary. In contrast, weight-only quantization maintains activations in floating-point precision throughout the entire operational lifecycle. Because there is no integer accumulation step and no low-precision integer output, the entire downstream requantization workflow is completely bypassed.
+
+The hardware and mathematical implications of this architectural bypass include:
+
+* **Elimination of the Integer Accumulator Stage:** The matrix multiplication executes via floating-point units. Accumulation occurs natively in floating-point precision ($\text{fp16}$, or $\text{fp32}$ internally depending on the GPU architecture's tensor core configuration). This removes the $\text{int32} \rightarrow \text{int8}$ downscaling step entirely.
+* **Absence of Requantization Boundaries:** Because the GEMM output remains a native $\text{float16}$ tensor, no domain conversion is required. The strict requantization error budgets established in Chapter 7 are mathematically irrelevant.
+* **Altered Purpose of Operator Fusion:** In weight-only models, kernel fusion is still heavily utilized, but its role shifts exclusively to systems-level optimization. It minimizes hardware kernel launch overheads and reduces memory-bandwidth traffic by fusing the dequantization logic directly into the GEMM loader; it is not deployed to truncate downstream rounding errors, as no such errors exist.
+
+Consequently, the singular source of quantization noise in this paradigm is the static representation error of the weights themselves (the delta between the uncompressed $\text{float16}$ parameter and its discrete $\text{int4}$ or $\text{int8}$ code). Because this error is immutable and completely decoupled from execution-time inputs, there is no activation calibration step, no data-dependent variance, and zero risk of calibration drift. The complex *Cumulative Rounding Noise* pattern introduced in Chapter 13 simply does not manifest in a boundary-accumulation form during weight-only serving.
+
+> **Canonical Category: Error Insulation** > Weight-only serving architectures remain completely insulated from Cumulative Rounding Noise (boundary form) and Calibration Mismatch risks. The remaining mathematical vulnerability is bounded entirely by Resolution Collapse within the weight grid itself, which is controlled strictly via group size selection.
 
 ---
 
-## The Boundary Rule Does Not Apply Here
+## The KV-Cache: The Secondary Memory Bottleneck
 
-A reader who has internalized Chapters 6â€“8 â€” where quantization boundaries, requantization error, and fusion dominate the discussion â€” might expect these concerns to carry over. They do not.
+While weight-only quantization systematically mitigates the weight-loading bottleneck during generation, long-context LLM execution introduces a second critical memory bottleneck: the **Key-Value (KV) cache**.
 
-To understand why, recall the full integer pipeline from those chapters: int8 Ã— int8 â†’ int32 accumulator â†’ requantize to int8 â†’ next layer. Every arrow in that chain is a source of rounding error. In weight-only quantization, activations stay in float16 throughout â€” there is no int32 accumulator, no int8 output, and therefore no requantization step at all.
+During autoregressive generation, each transformer layer caches the Key and Value tensor projections for all historical tokens in the sequence to avoid redundant recomputation. For a 70B model configuration featuring 80 layers, 8 Grouped-Query Attention (GQA) KV heads, and a head dimension of 128, the KV-cache allocation required per single token is calculated as follows:
 
-In weight-only quantization, the boundary framework from Chapters 6â€“8 is *bypassed entirely*:
+$$80 \text{ layers} \times 2 \ (\text{K and V}) \times 8 \text{ heads} \times 128 \text{ dim} \times 2 \text{ bytes (float16)} = 327,680 \text{ bytes} \approx 320 \text{ KB per token}$$
 
-- **No integer accumulator stage.** The matmul runs in float16. Accumulation happens in floating-point (fp16, or fp32 internally on some GPUs). There is no int32 accumulator and therefore no int32â†’int8 requantization step.
-- **No requantization.** The output is float16. No conversion from int32â†’int8 is needed. The requantization error budget from Chapter 7 does not apply.
-- **No fusion for error reduction.** Fusion in weight-only models reduces kernel launch overhead and memory traffic, but it does not eliminate requantization error â€” because there is no requantization error to eliminate.
+Scaling this context footprint reveals how rapidly memory consumption shifts at runtime:
+* **At a context of 8,192 tokens:** $320 \text{ KB} \times 8,192 = 2.56 \text{ GB}$
+* **At a context of 128,000 tokens:** $320 \text{ KB} \times 128,000 = 40 \text{ GB}$
 
-The only error source is weight quantization itself: the difference between the float16 weight and its int4 representation. This error is static (input-independent) and there is no activation calibration step. Weight-only quantization avoids the repeated requantization noise introduced by int32â†’int8 boundaries â€” the Cumulative Rounding Noise pattern from Chapter 13 does not arise in its boundary-accumulation form.
+The KV-cache scales linearly with both sequence length and batch size, requiring a complete round-trip read from High Bandwidth Memory (HBM) at every sequential decoding step. For deep, long-context context windows, the memory bandwidth traffic required to load the KV-cache can easily rival or surpass the bandwidth cost of streaming the static model weights themselves.
 
-*Canonical category: weight-only quantization bypasses Cumulative Rounding Noise (boundary form) and Calibration Mismatch (no activation calibration). The remaining risk is Resolution Collapse in the weights themselves, controlled by group size.*
 
----
+KV-cache quantization directly addresses this runtime expansion. Compressing keys and values into $\text{int8}$ format immediately reduces the memory footprint by $50\%$. Native $\text{fp8}$ formats (explored in Chapter 19) offer identical capacity savings while minimizing precision dropouts, leveraging a non-uniform floating-point grid that natively maps to activation distributions.
 
-## The KV-Cache: The Other Memory Bottleneck
+However, from a hardware compilation and numerical perspective, KV-cache quantization is fundamentally decoupled from weight-only quantization mechanics:
 
-Weight-only quantization solves the weight loading bottleneck. But for long-context LLM inference, a second memory bottleneck emerges: the *key-value cache*.
+* **Static vs. Dynamic Lifecycles:** Model weights are static parameters, allowing them to be quantized once offline or at initial model load time. Conversely, KV-cache entries are generated *dynamically* at runtime; each newly appended token appends fresh tensor slices that must be quantized on-the-fly inside the inference execution path.
+* **Offline Calibration vs. Online Extraction:** Weight distributions can be fully profiled and calibrated prior to deployment. KV-cache activation distributions are dictated entirely by the active runtime input sequence and cannot be predicted ahead of time. Scale factors must be extracted online, per-head and per-layer, and adjusted continuously as the context length increases.
+* **Deterministic vs. Stochastic Noise Budgets:** Weight quantization error remains completely fixed and deterministic throughout production execution. KV-cache quantization error exhibits high variance across different generation sequences, producing distinct activation distributions and shifting quantization noise patterns depending on the content of the prompt.
 
-During autoregressive generation, each transformer layer stores the key and value projections of all previously generated tokens. For a 70B model with 80 layers, 8 KV heads, and head dimension 128, the KV-cache per token occupies:
-
-$$80 \times 2 \times 8 \times 128 \times 2 \text{ bytes (float16)} = 327{,}680 \text{ bytes} \approx 320 \text{ KB per token}$$
-
-At 8,192 tokens of context: \\(320 \text{ KB} \times 8{,}192 = 2.56 \text{ GB}\\).
-At 128,000 tokens: \\(320 \text{ KB} \times 128{,}000 = 40 \text{ GB}\\).
-
-The KV-cache grows linearly with sequence length and must be loaded from memory at every generation step. For long sequences, it rivals or exceeds the model weights in memory bandwidth cost.
-
-KV-cache quantization reduces this cost. Storing keys and values in int8 instead of float16 cuts KV-cache memory by 50%. FP8 (Chapter 19) achieves similar savings with less precision loss due to its non-uniform grid.
-
-But KV-cache quantization is fundamentally different from weight quantization:
-
-- **Weights are static.** They are quantized once at load time. KV-cache entries are *generated dynamically* â€” each new token adds new entries that must be quantized on-the-fly during inference.
-- **Weights can be calibrated offline.** KV-cache distributions depend on the actual input sequence and cannot be predicted in advance. Scales must be computed per-head, per-layer, and updated as the sequence grows.
-- **Weight quantization error is fixed.** KV-cache quantization error varies with the content being generated â€” different sequences produce different KV distributions and different quantization error patterns.
-
-*KV-cache quantization reintroduces Calibration Mismatch risk (scales derived online from limited context) and Tail Clipping risk (saturation if scales are not updated as the sequence grows). This connects KV-cache quantization back to the dynamic quantization framework from Chapter 12.*
+> **Canonical Category: Runtime State Degradation** > Quantizing the KV-cache reintroduces *Calibration Mismatch* risks (where scale factors must be derived online from an incomplete or highly local context window) and *Tail Clipping* risks (causing saturation clipping if the scaling factor bounds are not aggressively updated as token sequences evolve). This places KV-cache quantization squarely within the dynamic activation quantization paradigm analyzed in Chapter 12.
 
 KV-cache quantization is explored in depth in Chapter 18.
 
@@ -170,7 +189,11 @@ KV-cache quantization is explored in depth in Chapter 18.
 
 ## Conceptual Consolidation
 
-Weight-only quantization targets the binding constraint for LLM inference: memory bandwidth for loading weights. Activations stay in float16 because they are small and quantizing them saves negligible bandwidth. Group-wise quantization provides fine-grained precision control by assigning separate scales to groups of weights, with group size as the knob that trades accuracy for metadata overhead.
+Weight-only quantization directly targets the binding constraint of contemporary large language model deployment: memory bandwidth consumption during parameter streaming. Activations are preserved in native floating-point precision ($\text{float16}$ or $\text{bfloat16}$) during the autoregressive decode phase because their tensor footprints are remarkably small, rendering the bandwidth savings of activation compression numerically negligible. 
 
-The question for weight-only quantization is not "what precision?" but "what group size?" The answer depends on the model's sensitivity and the acceptable metadata overhead.
+To overcome the discrete resolution limitations inherent to low bit-widths like $\text{int4}$, group-wise quantization introduces fine-grained precision management. By partitioning rows into isolated sub-segments and assigning localized scale factors, it prevents wide parameter distributions from truncating subtle signal variations. This configuration establishes group size ($g$) as an explicit architectural knob, enabling systems engineers to trade off representation accuracy against metadata memory overhead.
+
+Consequently, the core engineering question for weight-only architecture shifts away from a broad debate over precision format, focusing instead on defining the optimal group size. Resolving this choice requires a careful balancing of the underlying model's architectural sensitivity to quantization noise against the hardware platform's tolerance for metadata storage and memory tracking overhead.
+
+
 
