@@ -23,7 +23,7 @@ To this point, our exploration of quantization has focused on static parameters:
 
 ## 18.1 Why the KV Cache Exists
 
-During autoregressive decoding, large language models generate tokens sequentially, one by one. To calculate the attention distribution for a new token \\(t_n\\), the self-attention layer requires computing dot products against the representations of all preceding tokens \\(t_1, \dots, t_{n-1})\\.
+During autoregressive decoding, large language models generate tokens sequentially, one by one. To calculate the attention distribution for a new token \\(t_n\\), the self-attention layer requires computing dot products against the representations of all preceding tokens \\(t_1, \dots, t_{n-1}\\).
 
 Without a caching mechanism, the execution engine must recompute the Key \\(K\\) and Value \\(V\\) projection matrices for every historical token at every single generation step. This creates an \\(O(n^2)\\) computational complexity spike that severely degrades generation speeds.
 
@@ -31,7 +31,7 @@ To bypass this redundant compute loop, serving engines implement the KV cache. T
 
 ---
 
-## 18.2 The Secondary Memory Wall: Mathematical Proof
+## 18.2 The Secondary Memory Wall:
 
 While weight optimization reduces the static parameter footprint on the accelerator, the memory footprint of the KV cache scales dynamically and linearly with sequence length, batch size, and architectural depth. This linear scaling creates a severe capacity bottleneck during long-context deployment.
 
@@ -39,7 +39,7 @@ While weight optimization reduces the static parameter footprint on the accelera
 
 The following expression mathematically defines the total byte capacity required to house the KV cache for an active inference execution:
 
-\\[S\_{\text{cache}} = 2 \times B \times L \times H \times D \times P\\]
+\\[S\_{\text{cache}} = 2 \times B \times L \times H \times D \times P \times N\\]
 
 Where:
 * \\(2\\) accounts for the distinct storage pools required for the Key \\(K\\) and Value \\(V\\) matrices.
@@ -48,6 +48,7 @@ Where:
 * \\(H\\) represents the operational head count allocated to the attention block.
 * \\(D\\) represents the inner hidden dimension size allocated per attention head.
 * \\(P\\) represents the numerical precision byte-width configuration (e.g., \\(2\\) bytes for standard `FP16` or `BF16`).
+* \\(N\\) represents the total number of transformer layers in the model architecture.
 
 ### 18.2.2 Concrete Profile: Mistral-7B Architecture Walkthrough
 
@@ -57,27 +58,27 @@ To ground this sizing equation, consider a real-world server deployment hosting 
 * **Head Dimension \\(D\\):** \\(128\\)
 * **Baseline Precision \\(P\\):** \\(2\\) bytes (`BF16`)
 
-Assume the execution engine processes a batch size \\(B\\) of \\16\\ concurrent request streams, with each stream running at an extended sequence context length \\(L\\) of \\32,768\\ tokens \\(32\text{k}\\).
+Assume the execution engine processes a batch size \\(B\\) of \\(16\\) concurrent request streams, with each stream running at an extended sequence context length \\(L\\) of \\(32,768\\) tokens \\(32\text{k}\\).
 
 Let us calculate the baseline memory footprint required exclusively by the model weights at rest. Storing 7 billion parameters in 16-bit precision requires:
 
-\\W_{\text{bytes}} = 7 \times 10^9 \times 2 \text{ bytes} \approx 14.0 \text{ GB}\\
+\\[W_{\text{bytes}} = 7 \times 10^9 \times 2 \text{ bytes} \approx 14.0 \text{ GB}\\]
 
 Now, let us calculate the runtime memory footprint required by the unquantized `BF16` KV cache for a single transformer layer using our sizing equation:
 
-\\S_{\text{layer}} = 2 \times 16 \times 32,768 \times 8 \times 128 \times 2 \text{ bytes}\\
+\\[S_{\text{layer}} = 2 \times 16 \times 32,768 \times 8 \times 128 \times 2 \text{ bytes}\\]
 
-\\S_{\text{layer}} = 33,554,432 \text{ bytes} \approx 33.55 \text{ MB per layer}\\
+\\[S_{\text{layer}} = 33,554,432 \text{ bytes} \approx 33.55 \text{ MB per layer}\\]
 
 To find the aggregate memory footprint across the entire execution graph, we multiply this single-layer requirement by the total layer depth \\(N = 32\\):
 
-\\S_{\text{total}} = 32 \times 33,554,432 \text{ bytes} = 1,073,741,824 \text{ bytes} = 1.0 \text{ GB}\\
+\\[S_{\text{total}} = 32 \times 33,554,432 \text{ bytes} = 1,073,741,824 \text{ bytes} = 1.0 \text{ GB}\\]
 
-At a modest batch size of 16 and a 32k context window, the dynamic KV cache consumes \\1.0 \text{ GB}\\ of memory. If we scale the batch size to \\128\\ concurrent streams to optimize serving throughput, the cache requirement expands proportionally:
+At a modest batch size of 16 and a 32k context window, the dynamic KV cache consumes \\(1.0 \text{ GB}\\) of memory. If we scale the batch size to \\(128\\) concurrent streams to optimize serving throughput, the cache requirement expands proportionally:
 
-\\S_{\text{scaled}} = 1.0 \text{ GB} \times \left(\frac{128}{16}\right) = 8.0 \text{ GB}\\
+\\[S_{\text{scaled}} = 1.0 \text{ GB} \times \left(\frac{128}{16}\right) = 8.0 \text{ GB}\\]
 
-This structural expansion creates a major deployment bottleneck. While the \\14.0 \text{ GB}\\ parameter weight block remains static, the KV cache scales dynamically and can quickly exceed the physical memory capacity of standard hardware accelerators. Consequently, quantizing the KV cache to lower precision formats is a critical optimization for long-context serving.
+This structural expansion creates a major deployment bottleneck. While the \\(14.0 \text{ GB}\\) parameter weight block remains static, the KV cache scales dynamically and can quickly exceed the physical memory capacity of standard hardware accelerators. Consequently, quantizing the KV cache to lower precision formats is a critical optimization for long-context serving.
 
 ---
 
