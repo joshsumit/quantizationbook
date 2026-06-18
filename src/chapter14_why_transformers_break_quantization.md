@@ -8,16 +8,17 @@ In this chapter, we analyze the structural behavior of transformer activations u
 In contrast, large language models (LLMs) and vision transformers (ViTs) generate activation distributions that systematically break the core assumptions of uniform quantization. Transformers introduce a structurally distinct optimization challenge. Instead of well-behaved parameters, they generate extreme, systematic activation outliers that standard quantization frameworks simply lack the architectural capacity to resolve.
 
 ┌────────────────────────────────────────────────────────────────────────┐
-│ VISUAL INTUITION: CNN VS. TRANSFORMER ACTIVATION PROFILES              │
+│ 💡 VISUAL ANALOGY                                                      │
 │                                                                        │
-│  CNN Activation Profile (Gaussian / Bounded):                          │
-│  [       ░░▒▒▓▓██▓▓▒▒░░       ] ───► Standard linear scaling maps     │
-│  -Max                      +Max      all codes efficiently.            │
+│  Weight Quantization (Static Asset Compression):                       │
+│  Compressing immutable parameters stored in non-                       │
+│  volatile memory or high-bandwidth memory (HBM).                       │
+│  [■■■■■■■■] ───(Quantize)───► [■■■■]                                    │
 │                                                                        │
-│  Transformer Activation Profile (Heavy-Tailed / Outlier Dominated):    │
-│  [███████]░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░[█ Outlier Channel]    │
-│  0   1.5                                         +100.0                │
-│  (99% of activations cluster near zero)          (Forces grid stretch) │
+│  KV-Cache Quantization (Dynamic Stream Compression):                   │
+│  Compressing a continuously expanding runtime tensor                   │
+│  generated append-only at each decode step.                            │
+│  [■■■] ───► [■■■■■■] ───► [■■■■■■■■■■] ───► (Iterative)                │
 └────────────────────────────────────────────────────────────────────────┘
 
 ---
@@ -142,8 +143,6 @@ $$\text{Outlier Ratio} = \frac{2}{512} \approx 0.39\%$$
 
 Yet, because per-tensor quantization forces a shared grid scale, this $0.39\%$ of dimensions inflicts a 30-fold resolution drop across the remaining $99.6\%$ of the features. This mathematical mismatch makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
 
-*Canonical category: Resolution Collapse (in normal channels) caused by Distribution Mismatch / Budget Waste.*
-
 ---
 
 ## 14.3 Limitations of Per-Channel Quantization Axes
@@ -165,8 +164,6 @@ Activation outliers therefore present a two-dimensional challenge: they are **ch
 
 ### 14.3.2 Runtime Streaming Inefficiencies
 A key practical constraint is that dynamically computing accurate per-channel activation scales at inference time is highly difficult in a streaming pipeline. Calculating a reliable scale factor for a single channel requires aggregating profiling statistics down the column *across tokens*. In real-time generation loops, tokens arrive sequentially, making vertical step-size tracking mathematically look-ahead dependent or hardware inefficient. As a result, production systems favor per-token (row-wise) activation quantization or alternative hybrid quantization topologies.
-
-*Canonical category: Tail Clipping vs Budget Waste trade-off across the token dimension.*
 
 ---
 
@@ -216,7 +213,7 @@ These phenomena are systemic properties of the transformer architecture rather t
 ### Concrete Example at a ~100:1 Channel Ratio
 Consider a projection layer where the majority of channels peak between $-2.1$ and $+2.1$, while a small fraction of outlier channels spike to $\pm 210.0$. A symmetric per-tensor quantization grid must expand to capture this absolute maximum, yielding a global scale factor:
 
-$$S = \frac{2 \times x_{\text{max}}}{255} = \frac{2 \times 210.0}{255} = \frac>{\vphantom{2}420.0}{255} \approx 1.6471$$
+$$S = \frac{2 \times x_{\text{max}}}{255} = \frac{2 \times 210.0}{255} = \frac{420.0}{255} \approx 1.6471$$
 
 For the remaining ~99% of channels operating within the baseline range ($\text{width} = 2.1 - (-2.1) = 4.2$), the effective resolution collapses:
 
