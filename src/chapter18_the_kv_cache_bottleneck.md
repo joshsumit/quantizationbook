@@ -1,253 +1,247 @@
-﻿# Chapter 18: The KV-Cache Bottleneck
+﻿# Chapter 14: Why Transformers Break Quantization
 
 > **Chapter Horizon**
-> While weight quantization reduces the static memory footprint of model parameters at rest, KV-cache quantization targets the dynamic, runtime memory overhead that bounds long-context inference scalability.
+> While convolutional architectures yield compact, symmetric activation distributions that map cleanly to uniform integer grids, transformer-based topologies generate severe, systematic activation outliers and highly skewed attention profiles that completely break standard linear compression frameworks.
 
-To this point, our exploration of quantization has focused on static parameters: mapping fixed, offline model weights to lower-precision representations while minimizing reconstruction error. The Key-Value (KV) cache introduces a fundamentally distinct architectural challenge: it consists of dynamic, runtime activation data generated iteratively during inference execution.
+In this chapter, we analyze the structural behavior of transformer activations under quantization and isolate the specific mechanisms that cause standard linear compression techniques to fail. The quantization methodologies detailed in Chapters 1–13 deliver excellent results for convolutional neural networks (CNNs) and classic feedforward architectures. For instance, standard Post-Training Quantization (PTQ) compresses networks like ResNet-50 to `INT8` precision while keeping the accuracy drop well below 1%. These models exhibit compact weight distributions and strictly bounded activation ranges, allowing standard uniform grids to map them cleanly.
 
-┌────────────────────────────────────────────────────────┐
-│ VISUAL ANALOGY                                         │
-│                                                        │
-│  Weight Quantization (Static Asset Compression):       │
-│  Compressing immutable parameters stored in non-       │
-│  volatile memory or high-bandwidth memory (HBM).       │
-│  [■■■■■■■■] ───(Quantize)───► [■■■■]                    │
-│                                                        │
-│  KV-Cache Quantization (Dynamic Stream Compression):   │
-│  Compressing a continuously expanding runtime tensor   │
-│  generated append-only at each decode step.           │
-│  [■■■] ───► [■■■■■■] ───► [■■■■■■■■■■] ───► (Iterative)│
-└────────────────────────────────────────────────────────┘
-
----
-
-## Why the KV Cache Exists
-
-During the autoregressive decoding phase, a Large Language Model (LLM) predicts the next token conditioned on the sequence's entire historical context. Computing the self-attention mechanism for a newly generated token requires access to the key ($K$) and value ($V$) projections of all preceding tokens in the sequence. 
-
-To eliminate redundant recomputation of these historical vectors at every generation step, the inference engine evaluates the $K$ and $V$ tensors exactly once when a token is ingested (during the prefill phase) or generated (during the decode phase). These tensors are then cached in high-bandwidth memory (HBM) within a structured ring or block buffer known as the **KV cache**.
-
-┌─────────────────────────────────────────────────────────────────────────┐
-│ THE KV-CACHE LIFECYCLE                                                  │
-│                                                                         │
-│  1. Token Ingestion ──► 2. Projection Generation ──► 3. Buffer Allocation │
-│        "Hello"             $K$ and $V$ Tensors         [ "Hello" Cache Slot]│
-│                                                              │          │
-│  4. Downstream Reuse ◄───────────────────────────────────────┘          │
-│        "World" projects queries ($Q$), attending to historical $K$/$V$   │
-└─────────────────────────────────────────────────────────────────────────┘
-
----
-
-## The Scalability Bottleneck
-
-Although caching historical projections optimizes computational efficiency, it introduces an adversarial memory allocation problem. While model weights remain fixed, the KV cache scales linearly with sequence length ($T$) and concurrently with batch size ($B$). 
-
-For standard short-form interactions, this runtime overhead is nominal. However, in contemporary long-context applications—such as multi-document retrieval, repository-wide codebase analysis, and long-form synthesis—the memory allocation required by temporary execution variables grows until it completely eclipses the base model weight footprint, acting as the primary constraint on system throughput.
-
----
-
-## Memory Growth Mathematics
-
-Architecturally, a transformer-based topology consists of $L$ layers. Each layer features an independent attention block with $H_{kv}$ KV-heads operating over a uniform head dimension $d$. At every sequential decode step, each head across all layers appends a singular key vector and a singular value vector to the cache for the active token.
-
-For an operational sequence length of $T$ tokens utilizing standard 16-bit floating-point primitives (`FP16` or `BF16`), each scalar value requires 2 bytes of storage. The raw memory footprint of the KV cache is formalized as:
-
-\\[ Memory_{\text{bytes}} = L \times 2 \times H_{kv} \times d \times T \times 2 \\]
-
-Where:
-* The first multiplier of $2$ accounts for the two discrete tensor components stored per token: Keys ($K$) and Values ($V$).
-* The final multiplier of $2$ reflects the precision payload ($2 \text{ bytes per element}$).
-
-Simplifying this expression yields our primary sizing formula:
-
-\\[ Memory_{\text{bytes}} = 4 \times L \times H_{kv} \times d \times T \\]
-
-### The Mitigating Impact of GQA and MQA
-
-In legacy transformer architectures (such as vanilla Multi-Head Attention, or MHA), the number of KV heads matched the query heads ($H_{q} = H_{kv}$). Modern architectures employ **Multi-Query Attention (MQA)** or **Grouped-Query Attention (GQA)** to decouple this relationship.
-
-In a GQA paradigm, multiple query heads share a singular, unified KV head (e.g., an $8:1$ group ratio). Reducing the spatial dimension of $H_{kv}$ by an $8\times$ factor directly reduces the runtime KV cache memory capacity requirements and memory bandwidth pressure by $8\times$, rendering ultra-long context windows hardware-feasible.
-
-### Production Case Study: KV Cache Memory Profile
-
-Consider a practical production workload using a model configured with $L = 80$ layers, $H_{kv} = 8$ KV-heads (GQA), and a head dimension of $d = 128$, running at a sequence length of $T = 32{,}768$ tokens.
-
-**1. Baseline Formula Application**
-\\[ Memory_{\text{bytes}} = 4 \times 80 \text{ layers} \times 8 \text{ heads} \times 128 \text{ dim} \times 32{,}768 \text{ tokens} \\]
-
-**2. Total Byte Evaluation**
-\\[ Memory_{\text{bytes}} = 10{,}737{,}418{,}240 \text{ bytes} \\]
-
-**3. Binary Quantization Conversion (GiB)**
-To map this payload to physical VRAM block layouts, we normalize bytes to Gibibytes ($1 \text{ GiB} = 1024^3 \text{ bytes}$):
-\\[ Memory_{\text{GiB}} = \frac{10{,}737{,}418{,}240}{1024^3} = 10.0 \text{ GiB} \\]
-
-### Quantifying the Parameter Crossover
-
-The table below maps the linear growth of this runtime cache against a static $35\text{ GiB}$ `INT4` compressed model weight footprint, identifying the precise inflection point where memory optimization strategies must pivot:
-
-| Sequence Length ($T$) | KV-Cache Footprint (`FP16/BF16`) | Model Weight Footprint (`INT4`) |
-| :--- | :--- | :--- |
-| $1{,}024$ tokens | $\approx 0.31 \text{ GiB}$ ($320 \text{ MiB}$) | $35.0 \text{ GiB}$ |
-| $8{,}192$ tokens | $\approx 2.50 \text{ GiB}$ | $35.0 \text{ GiB}$ |
-| $32{,}768$ tokens | $10.00 \text{ GiB}$ | $35.0 \text{ GiB}$ |
-| $114{,}688$ tokens | $\approx 35.00 \text{ GiB}$ | $35.0 \text{ GiB}$ |
-| $131{,}072$ tokens | $40.00 \text{ GiB}$ | $35.0 \text{ GiB}$ |
-
-> **📊 INSERT DIAGRAM: KV-Cache Growth vs. Model Weights**
->
-> A line chart depicting sequence length ($T$) on the x-axis ($0 \text{ to } 128\text{K}$ tokens) against VRAM consumption in GiB on the y-axis:
->
-> ```
-> Memory
-> (GiB)
->  40 │                                                ／／ KV-cache (FP16)
->     │                                           ／／／／
->  35 │────────────────────────── Model weights (INT4) = 35 GiB (constant)
->     │                                      ／／／
->  30 │                                 ／／／／
->     │                            ／／／／
->  20 │                       ／／／／         KV-cache (INT8) [50% Slope]
->     │                  ／／／／
->  10 │             ／／／／           KV-cache (INT4) [25% Slope]
->     │        ／／／／
->   0 │─────────────────────────────────────────────────
->     0     4K     16K     32K     64K     128K  tokens
-> ```
-> * **Crossover Analysis:** At $T \approx 115\text{K}$ tokens, the activation footprint of a 16-bit KV cache crosses the threshold of the compressed model parameters. 
-> * **Quantization Vectors:** Compressing the cache to `INT8` or `INT4` flattens the trajectory slope, successfully pushing the physical hardware boundary further out along the horizontal axis.
-
-*Mathematical Verification:* Evaluating our core formula at exactly $T = 114{,}688$ tokens yields a cache size of $35.0 \text{ GiB}$, corroborating that the execution variables match the parameter capacity at this point. Scaling this natively to a $1{,}000{,}000$ token horizon without quantization would demand $305.17 \text{ GiB}$ of high-speed memory storage for a single stream—far exceeding the memory capability of individual enterprise accelerator nodes.
-
----
-
-## The Dual-Headed Hardware Constraint
-
-The execution bottlenecks induced by the KV cache are bifurcated into two distinct resource domains: a **capacity constraint** and a **bandwidth constraint**.
-
-### 1. The Capacity Constraint (Spatial Allocation)
-This defines an absolute physical threshold: **Can the tensor arrays physically sit within allocated VRAM blocks?** If a target node exposes an 80GB hardware ceiling, and resident model parameters consume $35\text{ GiB}$, the remaining pool for runtime variables is strictly bounded at $45\text{ GiB}$. If incoming requests provoke an activation allocation of $50\text{ GiB}$, the runtime environment immediately terminates execution via an Out-of-Memory (OOM) fault. Capacity limits multi-tenant batch concurrency and absolute maximum sequence ceilings.
-
-### 2. The Bandwidth Constraint (Throughput Scaling)
-Even if the KV cache comfortably fits within memory bounds, the execution engine must sweep the cached history out of High-Bandwidth Memory (HBM) and stream it directly into the processor's localized SRAM at every single auto-regressive generation step. Consequently, the token generation velocity (decode time) changes from a compute-bound operation to a heavily memory-bandwidth-bound operation.
-
-We model the algorithmic data transfer required per generated token via the **decode-time bandwidth equation**:
-
-\\[ \text{Data Transfer}_{\text{bytes/token}} = \text{Size}_{\text{Weights}} + \left(4 \times L \times H_{kv} \times d \times T_{\text{current}}\right) \\]
-
-As $T_{\text{current}}$ scales, historical activation traffic increasingly dominates the global memory bus data transfer budget. The arithmetic intensity (FLOPs per byte fetched) deteriorates, ensuring that streaming old KV cache tensors consumes significantly more time than the core matrix multiplication work of the layer.
-
----
-
-## Why KV Quantization Is Unique
-
-Unlike static weight quantization (Chapters 16–17), which evaluates immutable parameter vectors using offline calibration data and unbounded optimization loops, the KV cache is highly dynamic. It presents distinct optimization challenges:
-
-* **Zero-Latency Enforcement:** Cache segments are generated on-the-fly at runtime. Quantization routines must execute directly inline within the tensor dispatch path with near-zero latency overhead, excluding the use of iterative optimization loops.
-* **Context-Driven Activation Drift:** Activation tensor distributions are highly contingent on the semantics of the runtime context window. A structured programming script yields entirely different numerical outlier topologies than a natural language narrative, rendering static scale factors highly lossy.
-* **Non-Stationary Quantization Scalers:** Because each successive token sequence can introduce arbitrary numerical boundaries, scaling factors cannot be statically pre-calculated; they must be evaluated dynamically across layers, heads, and tokens concurrently during inference execution.
-* **Continuous Range Expansion:** While static parameter matrices exhibit invariant extrema, the token sequences processing through long contexts suffer from continuous variance drift and range expansion over prolonged generation lifecycles, risking severe tensor clipping.
-
----
-
-## Architectural Scaling Topologies
+In contrast, large language models (LLMs) and vision transformers (ViTs) generate activation distributions that systematically break the core assumptions of uniform quantization. Transformers introduce a structurally distinct optimization challenge. Instead of well-behaved parameters, they generate extreme, systematic activation outliers that standard quantization frameworks simply lack the architectural capacity to resolve.
 
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        QUANTIZATION GRANULARITIES                      │
+│ 💡 VISUAL ANALOGY                                                      │
 │                                                                        │
-│ Per-Head:   [ Layer L, Head H ] ──► Single Scaling Factor              │
-│                                     (High error risk from outliers)   │
+│  Weight Quantization (Static Asset Compression):                       │
+│  Compressing immutable parameters stored in non-                       │
+│  volatile memory or high-bandwidth memory (HBM).                       │
+│  [■■■■■■■■] ───(Quantize)───► [■■■■]                                    │
 │                                                                        │
-│ Per-Token:  [ Layer L, Head H, Token T ] ──► Unique Scaling Factor     │
-│                                      (Preserves local resolution)      │
-└────────────────────────────────────────────────────────────────────────┐
-
-### Per-Token Quantization
-To mitigate dynamic range drift, the primary approach scales each token activation vector independently based on its localized absolute maximum ($absmax$) profile.
-
-This methodology introduces an explicit metadata overhead: because each vector retains isolated scaling coefficients to normalize lower-precision representations, these scale factors must be cataloged adjacently to allow precise de-quantization during attention operations. For our base architecture at a $32\text{K}$ sequence depth:
-
-\\[ 80 \text{ layers} \times 2 \text{ (K/V)} \times 8 \text{ heads} \times 32{,}768 \text{ tokens} = 41{,}943{,}040 \text{ scaling factors} \\]
-
-Storing these coefficients in 16-bit precision requires $\approx 80 \text{ MiB}$ of structured metadata. While non-zero, this minor memory penalty is drastically outweighed by the gigabytes reclaimed through compressing the primary tensor arrays. The primary limitation of uniform per-token quantization is that a single isolated outlier within a vector compresses the quantization resolution of all adjacent values in that array.
-
-> **Worked Example: Resolving Localized Outliers via Granular Scaling**
-> 
-> Consider a single attention head with a 128-dimensional vector:
-> * **Token 1 (Stable Range):** Activations span a tight uniform range of $[-0.5, 0.8]$. A specialized per-token scaler ($\text{SF} = 0.8 / 127 \approx 0.0063$) maps these values cleanly across the integer boundaries of an `INT8` footprint.
-> * **Token 100 (Outlier Injection):** Introduces an extreme activation spike spanning $[-2.1, 3.2]$. Its local per-token scaler evaluates to $\text{SF} = 3.2 / 127 \approx 0.0252$.
-> 
-> If a global **per-head shared scale** were applied across the sequence execution, all historical tokens would be compressed using a uniform range dictated strictly by the worst-case outlier ($[-2.1, 3.2]$), locking the system scaling factor to $0.0252$.
-> 
-> Under this configuration, Token 1 suffers a catastrophic loss of bit-width resolution: its entire localized variance ($1.3$ total span) is forced through an inflated scaling step. It utilizes fewer than $\approx 52$ unique integer bins out of the 256 available within the `INT8` allocation matrix. The remaining representation space is wasted on empty numeric ranges, introducing quantization noise that destroys model accuracy. Per-token scaling preserves precision by assigning each vector its isolated step resolution.
-
-### Per-Head Quantization
-A coarser compression method where a single scaling coefficient is shared globally across all temporal tokens within a designated layer and head index. While this collapses metadata footprints to near-zero, it exposes the attention grid to extreme quantization noise. A singular outlier encountered at step $T=10$ structurally compromises the scaling resolution of all downstream tokens sharing that structural index.
-
-### Sliding-Window Scale Updates
-A hybrid strategy tracking dynamic ranges within a bounded, moving execution block of the most recent $W$ tokens. As the context window slides forward, scale factors are updated dynamically. 
-
-In low-latency production engines, re-quantizing historical data arrays is intentionally avoided due to the immense memory bandwidth overhead required to read, de-quantize, and re-quantize large blocks of past keys and values. Failure to re-quantize, however, exposes the system to clipping errors when active ranges surpass past bounds.
-
-### Asymmetric Key vs. Value Precision
-Empirical exploration reveals that self-attention blocks display varying sensitivities to noise injected across Key ($K$) and Value ($V$) execution lines:
-
-* **Keys ($K$):** Responsible for mapping raw dot-product similarity spaces ($Q K^T$). Minor perturbation or variance errors in Key arrays drastically warp downstream softmax probability maps, directing attention to incorrect contextual features. Keys are highly sensitive to precision degradation.
-* **Values ($V$):** Are aggregated via linear combinations guided by the normalized attention weights. The subsequent reduction step acts as a structural low-pass smoothing filter, naturally diluting zero-mean quantization noise across the active vector. Values are significantly more resilient to precision loss.
-
-Hardware systems leverage this asymmetric behavior to optimize memory footprints by retaining Keys at higher precision formats (e.g., `INT8` or `FP8`), while aggressively compressing Value arrays to highly compressed `INT4` matrices.
-
-┌────────────────────────────────────────────────────────────────────────┐
-│                      ASYMMETRIC KEY/VALUE FORMATS                      │
-│                                                                        │
-│   Key Vector (K):   [■■■■■■■■]  --> Retained at INT8 (High Precision)│
-│   Value Vector (V): [■■■■]      --> Compressed to INT4 (Aggressive)  │
-└────────────────────────────────────────────────────────────────────────┐
-
-> **Systems Comparison: Asymmetric Precision Profiles**
->
-> Using our 80-layer production model at a 32K context window, we observe the following architectural tradeoffs:
-> * **Uniform `INT8` Architecture:** Delivers a flat 50% memory reduction ($5.00 \text{ GiB}$ runtime footprint).
-> * **Uniform `INT4` Architecture:** Offers a 75% memory reduction ($2.50 \text{ GiB}$ footprint), but key-vector distortion degrades task accuracy and spikes perplexity metrics.
-> * **Asymmetric Configuration (`INT8` Keys / `INT4` Values):** Yields a hybrid footprint:
-> 
-> \\[ Memory = 80 \times 8 \times 128 \times 32{,}768 \times (1 \text{ byte}_K + 0.5 \text{ bytes}_V) = 3.75 \text{ GiB} \\]
-> 
-> This approach secures a $62.5\%$ reduction in activation volume while leaving key vector resolution pristine. The value quantization errors are smoothed out across the context array; an error spread across 20 active tokens is reduced by a factor of $\sqrt{20}$, protecting model accuracy.
+│  KV-Cache Quantization (Dynamic Stream Compression):                   │
+│  Compressing a continuously expanding runtime tensor                   │
+│  generated append-only at each decode step.                            │
+│  [■■■] ───► [■■■■■■] ───► [■■■■■■■■■■] ───► (Iterative)                │
+└────────────────────────────────────────────────────────────────────────┘
 
 ---
 
-## Empirical Verification Frameworks
+## 14.1 Systematic Activation Outliers
 
-Because KV-cache quantization noise is highly context-dependent, short-token academic benchmarks cannot catch performance degradation. Rigorous systems evaluation demands specialized long-context protocols:
+> **Systems Note:** Throughout this section, the term **channels** refers directly to the feature dimensions (hidden units or neurons) of the transformer. While this term originates from CNNs, hardware profiling tools, execution kernels, and quantization literature use it because these dimensions map directly to the contiguous memory columns of the activation tensor during matrix multiplication.
 
-* **Perplexity-over-Context Sweeps:** Profiling validation set cross-entropy loss continuously as sequence inputs expand sequentially out from $32\text{K}$ to $128\text{K}$ tokens.
-* **Needle-in-a-Haystack (NIAH):** Evaluating precise architectural retrieval by hiding target data snippets at varying depth percentiles inside large context blocks.
-* **RULER Benchmarks:** Synthetic suites designed to evaluate complex behavior across prolonged contexts, monitoring variable tracking, information aggregation, and multi-hop retrieval.
+In transformer models, a small, predictable subset of activation channels consistently produces values multiple orders of magnitude larger than typical features. This systematic variance stems directly from the structural design of the attention and feedforward mechanisms.
+
+Consider a typical LLM layer slice with 512 output channels. 510 of these channels produce normal activations with maximum absolute values below 2.0. The remaining 2 channels regularly generate values reaching 60.0 or 80.0—exceeding the baseline magnitude by 30 to 40 times. 
+
+These outlier channels exhibit strict spatial consistency, maintaining extreme values across entirely diverse input prompts. They emerge predictably as transformers cross the multi-billion parameter threshold and grow progressively more severe as the model scale increases. This behavior is a structural characteristic of the transformer architecture and its internal training dynamics, independent of specific datasets or isolated training runs.
+
+### 14.1.1 Architectural Drivers of Outlier Generation
+
+The emergence of systemic activation outliers is driven by a mechanical loophole in Layer Normalization (LayerNorm) paired with weight amplification in subsequent linear projections.
+
+#### 1. The Mechanical Loophole: Row-wise vs. Column-wise Normalization
+An activation tensor enters LayerNorm with a 2D shape of `[Sequence Length (Tokens), Hidden Dimension (Channels)]`. LayerNorm calculates variance and normalizes data horizontally across tokens (rows), rather than vertically across channels (columns).
+
+The matrix below illustrates this execution paradigm. Tokens normalize within their respective rows, leaving the channel columns unconstrained vertically:
+
+| Token Index | Channel 1 | Channel 2 | Channel 3 (Unconstrained) | ... | Channel 512 | LayerNorm Row Action |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Token 1** | 0.2 | -0.1 | **2.4** | ... | 0.4 | Normalized across channels to $\mu=0, \sigma=1$ |
+| **Token 2** | -0.3 | 0.3 | **2.5** | ... | -0.2 | Normalized across channels to $\mu=0, \sigma=1$ |
+| **Token 3** | 0.1 | -0.2 | **2.6** | ... | 0.5 | Normalized across channels to $\mu=0, \sigma=1$ |
+
+Because LayerNorm operates exclusively on rows, it is blind to vertical column trends. If a specific feature channel consistently outputs a higher relative value (such as $\sim 2.5$) across every token in a sequence, LayerNorm preserves this channel-wise variation entirely. It lacks a cross-token mechanism to scale down that column relative to its neighbors.
+
+#### 2. The Linear Amplification Phase
+After normalization, the magnitude explosion occurs immediately during the matrix multiplication with the subsequent linear layer's weight matrix ($W$).
+
+During training, the model frequently dedicates specific channels to encode persistent structural information, such as syntax markers, punctuation, or sequence delimiters. To maintain this representational capacity, gradient updates progressively scale up the specific weight vectors corresponding to those channels.
+
+When the row-normalized activations are multiplied by these amplified weight columns, the operation selectively scales the target channel by orders of magnitude:
+
+$$\text{Activation}_{\text{out}} = \text{LayerNorm}(\text{Activation}_{\text{in}}) \times W$$
+
+Because LayerNorm bypasses column-wise variance tracking, it passes a structurally unconstrained channel directly to an aggressive linear projector. The resulting output tensor contains isolated channels that spike to $60.0$ or $80.0$ across the entire sequence, forming the unquantizable outliers that compromise the shared per-tensor grid.
 
 ---
 
-## State-of-the-Art Production Topologies
+## 14.2 Quantization Grid Resolution Collapse
 
-Modern high-performance inference engines (such as **vLLM, TensorRT-LLM, and SGLang**) wrap quantization layers inside virtualized memory managers:
+Per-tensor quantization enforces a single scale factor $S$ across an entire activation tensor. In the presence of outliers, this global grid budget must span the absolute peak value, destroying the resolution of normal-range channels.
 
-### Block-wise and Page-wise Quantization
-Rather than tracking scales per individual token or globally across a layer, production systems group tokens into small, discrete physical memory chunks (typically 16 or 32 tokens) via **PagedAttention**. Quantization scales are bound directly to these physical page allocations, matching memory management boundaries with hardware execution blocks to achieve maximum execution throughput.
+Consider an activation tensor with 512 channels split into two behavioral zones:
+* **Normal Range (510 channels):** Values reside within $[-2.0, 2.0]$. 
+* **Outlier Range (2 channels):** Values peak at an absolute maximum of $60.0$.
 
-### Residual Caches and Recent-Token Windows
-To preserve generation accuracy during extended multi-turn conversations, engines deploy hybrid precision strategies. The most recent generated tokens (e.g., a sliding window of the latest 32 to 64 tokens) are preserved in unquantized, raw precision formats (`FP16`/`BF16`). As tokens slide out of this active generation window, their tensor slices are progressively compressed down to lower precision formats (`INT8`/`INT4`) for long-term storage.
+Symmetric uniform quantization requires a balanced grid centered around zero. The runtime must scale the entire tensor using the global absolute peak ($x_{\text{max}} = 60.0$). This forces the grid boundaries to span from $-x_{\text{max}}$ to $+x_{\text{max}}$ (from $-60.0$ to $+60.0$), establishing a total dynamic window width of:
 
-### Infrastructure Co-Design
-KV quantization does not execute in isolation; it must integrate with parallel optimization systems:
-* **FlashAttention Compiling:** Quantized cache blocks must be efficiently decompressed inside localized GPU register files on-the-fly to remain compatible with fused FlashAttention kernels without stalling processor execution.
-* **Continuous Batching Environments:** Because batch sequences coexist at highly asymmetrical lengths, block-level quantization ensures that shorter, low-range requests are never penalistically bound by the broader activation ranges of long-lived sequences running inside the same execution batch.
+$$\text{Total Window Width} = x_{\text{max}} - (-x_{\text{max}}) = 2 \times x_{\text{max}} = 2 \times 60.0 = 120.0$$
+
+A signed `INT8` format maps this dynamic range across 255 available symmetric steps. The uniform scale factor $S$ represents the real-world step size between discrete integer codes:
+
+$$S = \frac{2 \times x_{\text{max}}}{255} = \frac{120.0}{255} \approx 0.4706$$
+
+Because this scale factor applies globally, it forces a catastrophic resolution collapse on the 510 normal-range channels. We calculate the discrete levels available to represent their entire $4.0$-unit wide baseline range ($2.0 - (-2.0) = 4.0$) by dividing by the step size $S$:
+
+$$\text{Usable Levels with Outliers} = \frac{\text{Normal Baseline Width}}{S} = \frac{4.0}{0.4706} \approx 8.5$$
+
+To see why this $8.5$ value is a massive red flag for network precision, let's trace how distinct floating-point activations inside the normal channels map onto this coarse grid.
+
+### Scenario 1: Total Collapse to Zero
+Consider three small, distinct activations: $x_1 = 0.11$, $x_2 = 0.22$, and $x_3 = 0.23$. When passing through the quantization kernel ($\text{round}(x / S)$), the massive step size of $0.4706$ flattens them completely:
+
+$$\text{Quantized } x_1 = \text{round}\left(\frac{0.11}{0.4706}\right) = \text{round}(0.233) = \mathbf{0}$$
+
+$$\text{Quantized } x_2 = \text{round}\left(\frac{0.22}{0.4706}\right) = \text{round}(0.467) = \mathbf{0}$$
+
+$$\text{Quantized } x_3 = \text{round}\left(\frac{0.23}{0.4706}\right) = \text{round}(0.488) = \mathbf{0}$$
+
+### Scenario 2: Information Loss in Non-Zero Buckets
+The destruction isn't limited to zero. Higher activations escape zero but still suffer massive information loss by getting shoved into the exact same integer bucket. Consider $y_1 = 1.0$, $y_2 = 1.15$, and $y_3 = 1.3$:
+
+$$\text{Quantized } y_1 = \text{round}\left(\frac{1.0}{0.4706}\right) = \text{round}(2.125) = \mathbf{2}$$
+
+$$\text{Quantized } y_2 = \text{round}\left(\frac{1.15}{0.4706}\right) = \text{round}(2.444) = \mathbf{2}$$
+
+$$\text{Quantized } y_3 = \text{round}\left(\frac{1.3}{0.4706}\right) = \text{round}(2.762) = \mathbf{3}$$
+
+Here, both $1.0$ and $1.15$ collapse into the integer bucket $\mathbf{2}$. When dequantized back to a float via ($q \times S$), both reconstruct to exactly $2 \times 0.4706 = 0.9412$. The original $15\%$ variance between these features is permanently lost, introducing substantial quantization noise.
+
+### The Ideal Scenario (Isolating the Outlier Impact)
+To isolate the structural impact of these outliers, consider the ideal scenario if they did not exist. The tensor maximum drops to $x_{\text{normal\_max}} = 2.0$, yielding an optimized step size:
+
+$$S_{\text{ideal}} = \frac{2 \times 2.0}{255} = \frac{4.0}{255} \approx 0.0157$$
+
+Without outliers, the standard channels utilize the full dynamic budget of the data type:
+
+$$\text{Usable Levels without Outliers} = \frac{\text{Normal Baseline Width}}{S_{\text{ideal}}} = \frac{4.0}{0.0157} \approx 255$$
+
+Let's re-run our previous inputs through this optimized grid to see how high-resolution representation is preserved:
+
+#### Tracking the Low Values ($x_1, x_2, x_3$) on the Ideal Grid:
+$$\text{Quantized } x_1 = \text{round}\left(\frac{0.11}{0.0157}\right) = \text{round}(7.006) = \mathbf{7}$$
+
+$$\text{Quantized } x_2 = \text{round}\left(\frac{0.22}{0.0157}\right) = \text{round}(14.012) = \mathbf{14}$$
+
+$$\text{Quantized } x_3 = \text{round}\left(\frac{0.23}{0.0157}\right) = \text{round}(14.650) = \mathbf{15}$$
+
+#### Tracking the High Values ($y_1, y_2, y_3$) on the Ideal Grid:
+$$\text{Quantized } y_1 = \text{round}\left(\frac{1.0}{0.0157}\right) = \text{round}(63.694) = \mathbf{64}$$
+
+$$\text{Quantized } y_2 = \text{round}\left(\frac{1.15}{0.0157}\right) = \text{round}(73.248) = \mathbf{73}$$
+
+$$\text{Quantized } y_3 = \text{round}\left(\frac{1.3}{0.0157}\right) = \text{round}(82.802) = \mathbf{83}$$
+
+Every single float value now maps to its own dedicated, unique integer bucket. No signals collapse, and feature variance is perfectly preserved.
+
+### The Structural Destruction
+We quantify the structural destruction by calculating the resolution reduction ratio:
+
+$$\text{Resolution Reduction Ratio} = \frac{\text{Usable Levels without Outliers}}{\text{Usable Levels with Outliers}} = \frac{255}{8.5} = 30$$
+
+The two outlier channels constitute a tiny fraction of the layer width:
+
+$$\text{Outlier Ratio} = \frac{2}{512} \approx 0.39\%$$
+
+Yet, because per-tensor quantization forces a shared grid scale, this $0.39\%$ of dimensions inflicts a 30-fold resolution drop across the remaining $99.6\%$ of the features. This mathematical mismatch makes the activation outlier problem the primary failure mode for naive uniform quantization in multi-billion parameter transformers.
 
 ---
 
-## Chapter Summary
+## 14.3 Limitations of Per-Channel Quantization Axes
 
-* **The Second Memory Wall:** Weight quantization optimizes parameter volumes at rest, but the KV cache scales dynamically and linearly with sequence length, ultimately dominating memory capacity and transfer bandwidth budgets.
-* **Dynamic Constraints:** Cache arrays are highly runtime-dependent, requiring inline compression layers capable of absorbing range expansion and contextual variance with negligible latency overhead.
-* **Asymmetric Architecture:** Key vectors steer the self-attention trajectory map and require strict precision enforcement; Value vectors are tolerant of aggressive low-bit compression due to downstream reduction filters.
-* **Production Implementations:** Industrial systems deploy block-wise `INT8`, `FP8`, or mixed-precision configurations bound tightly within PagedAttention structures to maximize token throughput without destabilizing model accuracy.
+Per-channel quantization assigns a unique scale factor to each individual channel column. By decoupling these quantization grids, an extreme value in one channel cannot contaminate the resolution of other channels; each channel scales strictly according to its own dynamic range.
+
+However, while these outliers are spatially localized to specific channels, their magnitudes vary significantly across the token (sequence) dimension. A given channel may consistently contain outliers, but the amplitude of those activations fluctuates widely from token to token.
+
+For example, within a designated outlier channel, **Token A** (e.g., a punctuation mark or other high-signal token) might produce an activation magnitude of 60.0, while **Token B** (a common filler word) reaches only 2.0. If we use a single static scale per channel—such as one derived from offline calibration—it must accommodate this full range of activations, introducing a stark trade-off:
+
+* **Fitting to the peak (60.0):** The scale expands to cover the largest activation. Consequently, smaller activations around 2.0 are quantized with reduced precision, effectively collapsing their resolution.
+* **Fitting to the typical range (2.0):** The scale contracts to preserve precision for common activations. As a result, large outliers are clipped or saturated, destroying high-magnitude structural information.
+
+### 14.3.1 The Two-Dimensional Execution Space
+Activation outliers therefore present a two-dimensional challenge: they are **channel-local** (structurally concentrated in specific channels) yet **token-dynamic** (its magnitude varies across sequence positions). 
+
+* **Per-channel quantization** isolates variance across channels, but does not dynamically adapt to token-level variability. 
+* **Per-token quantization** adapts to token-level variation, but cannot isolate the channel-specific structure of these outliers.
+
+### 14.3.2 Runtime Streaming Inefficiencies
+A key practical constraint is that dynamically computing accurate per-channel activation scales at inference time is highly difficult in a streaming pipeline. Calculating a reliable scale factor for a single channel requires aggregating profiling statistics down the column *across tokens*. In real-time generation loops, tokens arrive sequentially, making vertical step-size tracking mathematically look-ahead dependent or hardware inefficient. As a result, production systems favor per-token (row-wise) activation quantization or alternative hybrid quantization topologies.
+
+---
+
+## 14.4 Softmax Representation Error
+
+Transformers compute attention scores by passing them through a softmax function. This operation concentrates values heavily near 0 while forcing a small number of dominant values near 1, creating a highly "spiky" distribution.
+
+A uniform quantization grid distributes its points evenly across its target range. For softmax outputs, this uniform spacing causes immediate resolution imbalances:
+* **The near-zero region ($0.00$ to $0.05$):** Contains the massive majority of values representing "non-attention" scores. These require high resolution to distinguish between complete non-attention and subtle, minor attention signals.
+* **The near-one region ($0.95$ to $1.00$):** Contains a few dominant attention scores that similarly demand high precision.
+* **The intermediate region ($0.1$ to $0.9$):** Contains very few values, yet receives the vast majority of the uniform grid points.
+
+### Worked Example (Softmax Output Quantization)
+Consider a single attention head where one query token attends to 8 key tokens. A typical post-softmax distribution yields:
+
+$$[0.001, 0.002, 0.005, 0.012, 0.03, 0.15, 0.35, 0.45]$$
+
+These values sum to 1.0. Under `INT8` quantization over the $[0, 1]$ range with a scale factor of $S = \frac{1.0}{255} \approx 0.00392$, the grid budget allocates as follows:
+
+| Region | Value Count | Int8 Codes Allocated | Budget Utilization |
+| :--- | :--- | :--- | :--- |
+| **$[0, 0.05)$** | 5 values | ~13 codes | 5.1% |
+| **$[0.05, 0.5)$** | 3 values | ~115 codes | 45.1% |
+| **$[0.5, 1.0]$** | 0 values | ~127 codes | 49.8% |
+
+The system wastes 115 codes on the $[0.05, 0.5)$ region where only 3 values exist, and squanders 127 codes on the $[0.5, 1.0]$ range that contains no values at all. Conversely, the 5 critical near-zero values must share just 13 codes. 
+
+Consequently, $0.001$ and $0.002$ both map to code 0:
+
+$$\text{Quantized } x_1 = \text{round}\left(\frac{0.001}{0.00392}\right) = \text{round}(0.255) = \mathbf{0}$$
+
+$$\text{Quantized } x_2 = \text{round}\left(\frac{0.002}{0.00392}\right) = \text{round}(0.510) = \mathbf{0}$$
+
+This obliterates the model's ability to distinguish between complete non-attention and minor attention signals. This structural limitation causes a representation error, as the uniform grid fundamentally mismatches the spiky softmax output distribution.
+
+---
+
+## 14.5 Scaling Dynamics and System-Level Impacts
+
+These phenomena are systemic properties of the transformer architecture rather than isolated edge cases. Once a model crosses the multi-billion parameter threshold, several characteristics emerge consistently:
+* **Ubiquitous Emergence:** Activation outliers consistently appear in linear layers immediately following LayerNorm.
+* **Magnitude Growth:** Outlier amplitudes tend to increase significantly with model scale (depth and width).
+* **Channel-wise Skew:** A small subset of channels can exhibit activation magnitudes tens to over a hundred times larger than typical channels, creating a highly imbalanced dynamic range.
+* **Token-wise Variability:** Within a given channel, activation magnitudes can still vary by orders of magnitude across tokens.
+* **Persistent Softmax Spikiness:** Attention distributions remain highly peaked (low entropy) across heads, reinforcing extreme value concentrations.
+
+### Concrete Example at a ~100:1 Channel Ratio
+Consider a projection layer where the majority of channels peak between $-2.1$ and $+2.1$, while a small fraction of outlier channels spike to $\pm 210.0$. A symmetric per-tensor quantization grid must expand to capture this absolute maximum, yielding a global scale factor:
+
+$$S = \frac{2 \times x_{\text{max}}}{255} = \frac{2 \times 210.0}{255} = \frac{420.0}{255} \approx 1.6471$$
+
+For the remaining ~99% of channels operating within the baseline range ($\text{width} = 2.1 - (-2.1) = 4.2$), the effective resolution collapses:
+
+$$\text{Usable Levels} = \frac{\text{Normal Width}}{S} = \frac{4.2}{1.6471} \approx 2.55$$
+
+This leaves only 2–3 discrete quantization levels to represent the entire feature space of most channels. To illustrate the impact, consider two distinct activations within a normal channel:
+
+$$x_1 = 0.2, \quad x_2 = 0.7$$
+
+$$\text{Quantized } x_1 = \text{round}\left(\frac{0.2}{1.6471}\right) = \text{round}(0.121) = \mathbf{0}$$
+
+$$\text{Quantized } x_2 = \text{round}\left(\frac{0.7}{1.6471}\right) = \text{round}(0.425) = \mathbf{0}$$
+
+Both distinct signals collapse into the same integer bucket ($\mathbf{0}$), permanently destroying feature variance. Because the overwhelming majority of channels are restricted to only a few coarse quantization levels, the layer’s output becomes dominated by quantization error for normal-magnitude features, severely degrading representational fidelity.
+
+Applying standard `INT8` PTQ to these models causes severe quality collapse across evaluation metrics, far exceeding the minor degradations observed in CNNs. The model's outputs become entirely incoherent. While Quantization-Aware Training (QAT) can mitigate this behavior, full-model fine-tuning at tens of billions of parameters incurs massive operational costs. Production deployments therefore rely on distribution-shaping or mixed-precision strategies.
+
+---
+
+## 14.6 Chapter Summary and Remediation Paradigms
+
+Transformers break standard quantization because they generate activation distributions with structural outliers (concentrated in specific channels at 10 to 100 times typical magnitudes) and spiky attention scores (clustered heavily at 0 and 1). These properties directly violate the bounded, uniform assumptions that per-tensor and per-channel quantization schemes rely on to maintain precision.
+
+Standard uniform quantization assumes a single scale factor can span an entire tensor while preserving useful resolution for the bulk of its values. Transformers break this assumption because the typical features and the extreme outliers remain structurally separated across the channel and token dimensions.
+
+To resolve this, engineers must shift their focus away from simply searching for alternative static scales. Instead, the core systems challenge requires transforming the underlying distributions to be "quantizable" before applying standard grids. Resolving these failures requires distribution-shaping operations or granularity adjustments across the channel and token dimensions prior to running standard compression workflows.
+
+**Critical Failure Signals in Production Pipelines:**
+* Attention quality drop maps sharply to the insertion of quantization blocks.
+* Output coherency degrades exponentially as text generation context lengths extend.
+* Small permutations in outlier channel magnitudes trigger catastrophic performance swings.
